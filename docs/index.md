@@ -40,6 +40,5 @@ body {
   padding: 0;
   min-height: 100vh;
   font-family: Arial, sans-serif;
-  background: #00264d;
 }
 </style>
