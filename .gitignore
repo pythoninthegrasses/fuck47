@@ -1,6 +1,7 @@
 # ETC
 .claude/
 .ruff*
+*.pdf
 *.pem
 *.sqlite
 articles.json
