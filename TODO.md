@@ -1,5 +1,8 @@
 # TODO
 
+* Testing
+  * Setup pre-commit hooks
+  * Setup CI
 * Fix characters in `articles.json`
   * unicode
     * `\u2018`
