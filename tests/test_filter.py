@@ -1,9 +1,5 @@
 #!/usr/bin/env python
 
-"""
-Test module for Trump news filtering functionality.
-"""
-
 import json
 import pytest
 import sys
@@ -179,7 +175,7 @@ class TestFilterWithRealData:
         non_djt_count = len(articles_json_data) - djt_count
 
         assert djt_count > 0, "Should contain some DJT-related articles"
-        
+
         # Note: The current articles.json may contain only DJT-related articles
         # depending on the filtering applied during data collection
         if non_djt_count == 0:
