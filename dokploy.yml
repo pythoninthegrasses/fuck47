@@ -1,0 +1,33 @@
+project:
+  name: fuck47
+  description:
+  deploy_order:
+    - - app
+
+github:
+  owner: pythoninthegrasses
+  repository: fuck47
+  branch: main
+
+environments:
+  prod:
+    apps:
+      app:
+        domain:
+          host: dev.fuckfortyseven.org
+          port: 80
+          https: true
+          certificateType: letsencrypt
+        autoDeploy: true
+        replicas: 2
+
+apps:
+  - name: app
+    source: github
+    buildType: static
+    publishDirectory: docs
+    isStaticSpa: true
+    buildPath: /
+    triggerType: push
+    autoDeploy: false
+    replicas: 1
