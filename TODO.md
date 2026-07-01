@@ -1,15 +1,3 @@
 # TODO
 
-* Testing
-  * Setup pre-commit hooks
-  * Setup CI
-* Fix characters in `articles.json`
-  * unicode
-    * `\u2018`
-    * `\u2019`
-    * `\u201c`
-    * `\u201d`
-  * double quotes
-    * `\"`
-* Continue chipping away at [tasks-prd.md](tasks/tasks-prd.md)
-* Fill out the [README.md](README.md)
+All task tracking has moved to Backlog.md (`backlog/`). See task-001 through task-009 for the full breakdown, including the items previously listed here (pre-commit/CI setup, `articles.json` character cleanup, README).

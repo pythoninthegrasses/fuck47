@@ -1,3 +1,9 @@
+---
+id: doc-001
+title: 'PRD: DJT News Sentiment Analysis Feature'
+type: other
+created_date: '2026-07-01 18:57'
+---
 # PRD: DJT News Sentiment Analysis Feature
 
 ## Introduction/Overview

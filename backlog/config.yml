@@ -2,7 +2,7 @@ project_name: "fuck47"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []
-definition_of_done: []
+definition_of_done: ["ruff format --check --diff . passes with no changes needed", "ruff check passes with no errors", "pytest passes (all tests green)", "New feature/bugfix developed test-first: failing test written before implementation", "Relevant docs updated (README.md / AGENTS.md)", "Committed as atomic conventional commit(s)"]
 date_format: yyyy-mm-dd
 max_column_width: 20
 default_editor: "vim"
