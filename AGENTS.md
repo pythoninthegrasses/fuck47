@@ -59,16 +59,49 @@ Use atomic commits with conventional commit format to ensure clean history and e
 - [How to Craft Your Changes into Small Atomic Commits Using Git](https://curiousprogrammer.dev/blog/how-to-craft-your-changes-into-small-atomic-commits-using-git/)
 - [The Power of Atomic Commits in Git: How and Why to Do It](https://dev.to/this-is-learning/the-power-of-atomic-commits-in-git-how-and-why-to-do-it-54mn)
 
-## Documentation Sites
+## Context7
 
-Reference documentation for technologies that may be used:
+Always use Context7 MCP when I need library/API documentation, code generation, setup or configuration steps without me having to explicitly ask.
 
-- **alpine.js**: <https://alpinejs.dev/>
-- **basecoatui**: <https://basecoatui.com/>
-- **decouple**: <https://github.com/henriquebastos/python-decouple>
-- **eliot**: <https://eliot.readthedocs.io/en/latest/>
-- **feedparser**: <https://feedparser.readthedocs.io/en/latest/>
-- **htmx**: <https://htmx.org/docs/>
-- **newsapi**: <https://newsapi.org/docs>
-- **requests-cache**: <https://requests-cache.readthedocs.io/en/stable/>
-- **tinydb**: <https://tinydb.readthedocs.io/en/latest/>
+### Libraries
+
+- alpinejs/alpine
+- astral-sh/ruff
+- astral-sh/uv
+- fastapi/fastapi
+- hunvreus/basecoat
+- jdx/mise
+- mrlesk/backlog.md
+- msiemens/tinydb
+- pbakaus/impeccable
+- tailwindlabs/tailwindcss
+- websites/taskfile_dev
+
+<!-- BACKLOG.MD MCP GUIDELINES START -->
+
+<CRITICAL_INSTRUCTION>
+
+## BACKLOG WORKFLOW INSTRUCTIONS
+
+This project uses Backlog.md MCP for all task and project management activities.
+
+**CRITICAL GUIDANCE**
+
+- If your client supports MCP resources, read `backlog://workflow/overview` to understand when and how to use Backlog for this project.
+- If your client only supports tools or the above request fails, call `backlog.get_workflow_overview()` tool to load the tool-oriented overview (it lists the matching guide tools).
+
+- **First time working here?** Read the overview resource IMMEDIATELY to learn the workflow
+- **Already familiar?** You should have the overview cached ("## Backlog.md Overview (MCP)")
+- **When to read it**: BEFORE creating tasks, or when you're unsure whether to track work
+
+These guides cover:
+- Decision framework for when to create tasks
+- Search-first workflow to avoid duplicates
+- Links to detailed guides for task creation, execution, and finalization
+- MCP tools reference
+
+You MUST read the overview resource to understand the complete workflow. The information is NOT summarized here.
+
+</CRITICAL_INSTRUCTION>
+
+<!-- BACKLOG.MD MCP GUIDELINES END -->
