@@ -1,13 +1,13 @@
 # LLM Sentiment Judge
 
-`filtered_articles.json` should only contain DJT-related coverage that reads as *negative/critical*, per the PRD (`backlog/docs/doc-001*`). Lexicon-based sentiment scorers (VADER, TextBlob) were considered and rejected: they score surface-level word polarity, not political framing, so headlines like *"Trump Pulled In About $1.4 Billion From Crypto Ventures"* read as neutral to a lexicon even though the coverage is clearly critical. Instead, `utils/sentiment.py` sends one batched request per pipeline run to an LLM and asks it to judge whether the coverage is favorable or unfavorable to DJT.
+The filtered articles store (`filtered_articles.duckdb`, exported to `filtered_articles.parquet`) should only contain DJT-related coverage that reads as *negative/critical*, per the PRD (`backlog/docs/doc-001*`). Lexicon-based sentiment scorers (VADER, TextBlob) were considered and rejected: they score surface-level word polarity, not political framing, so headlines like *"Trump Pulled In About $1.4 Billion From Crypto Ventures"* read as neutral to a lexicon even though the coverage is clearly critical. Instead, `utils/sentiment.py` sends one batched request per pipeline run to an LLM and asks it to judge whether the coverage is favorable or unfavorable to DJT.
 
 ## How it works
 
 1. After DJT-relevance filtering (`utils/filter.py`), `main.py` sends all DJT-related articles for that run to `utils/sentiment.score_articles()` in a single request.
 2. The model returns a JSON array of `{"index": ..., "sentiment_score": ...}` (`-1.0` very unfavorable/critical .. `1.0` very favorable) for every article.
 3. Articles with `sentiment_score <= SENTIMENT_MAX_SCORE` are kept; the rest are dropped.
-4. If the request fails for any reason (missing/invalid key, network error, timeout, unparseable response), `main.py` logs the failure via eliot and **skips rewriting `filtered_articles.json` for that run** — the site keeps serving the previous run's output rather than going blank or showing unfiltered content.
+4. If the request fails for any reason (missing/invalid key, network error, timeout, unparseable response), `main.py` logs the failure via eliot and **skips rewriting the filtered articles store for that run** — the site keeps serving the previous run's output rather than going blank or showing unfiltered content.
 
 ## Configuration
 
