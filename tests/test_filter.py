@@ -21,7 +21,7 @@ def sample_articles():
             'url': 'https://www.nytimes.com/2025/07/06/us/politics/trump-musk-america-party.html',
             'source': 'NYT > U.S. > Politics',
             'category': 'rss',
-            'author': 'Tyler Pager'
+            'author': 'Tyler Pager',
         },
         {
             'title': 'How to Make the Biggest Splash, According to Science',
@@ -29,7 +29,7 @@ def sample_articles():
             'url': 'https://www.example.com/science/physics/big-splash-water-jump',
             'source': 'Science Daily',
             'category': 'science',
-            'author': 'John Smith'
+            'author': 'John Smith',
         },
         {
             'title': 'Can Democrats Find Their Way on Immigration?',
@@ -37,8 +37,8 @@ def sample_articles():
             'url': 'https://www.nytimes.com/2025/07/06/us/politics/democrats-immigration-trump.html',
             'source': 'NYT > U.S. > Politics',
             'category': 'rss',
-            'author': 'Lisa Lerer'
-        }
+            'author': 'Lisa Lerer',
+        },
     ]
 
 
@@ -154,7 +154,7 @@ class TestDJTNewsFilter:
             'url': 'https://example.com',
             'source': 'Test Source',
             'category': 'politics',
-            'author': None
+            'author': None,
         }
 
         # Should not raise exception
@@ -191,7 +191,9 @@ class TestFilterWithRealData:
         djt_filter = DJTNewsFilter(min_score=1.0)
 
         for article in filtered_articles_json_data:
-            assert djt_filter.is_djt_related(article), f"All articles in filtered_articles.json should be DJT-related: {article['title']}"
+            assert djt_filter.is_djt_related(article), (
+                f"All articles in filtered_articles.json should be DJT-related: {article['title']}"
+            )
             assert 'djt_relevance_score' in article, "Filtered articles should have relevance scores"
 
     def test_filtering_consistency(self, articles_json_data):

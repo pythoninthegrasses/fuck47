@@ -43,7 +43,7 @@ class ArticleDB:
     def remove_by_url(self, url):
         """Remove articles by URL"""
         return self.db.remove(self.Article.url == url)
-    
+
     def clear_all_articles(self):
         """Clear all articles from the database"""
         removed_count = len(self.db.all())
