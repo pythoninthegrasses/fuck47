@@ -3,7 +3,10 @@
 *.pdf
 *.pem
 *.sqlite
+*.duckdb
+*.parquet
 articles.json
+filtered_articles.json
 CLAUDE.md
 
 # General
