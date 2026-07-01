@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-import json
 import pytest
+import shutil
 import sys
 import tempfile
 from datetime import datetime, timedelta
@@ -10,7 +10,8 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.db import ArticleDB, create_article_db, get_article_query
+import duckdb
+from utils.db import ArticleDB, create_article_db
 
 
 @pytest.fixture
@@ -63,17 +64,15 @@ def sample_articles():
 
 @pytest.fixture
 def temp_db():
-    """Fixture providing a temporary database for testing."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        temp_db_path = f.name
+    """Fixture providing a temporary DuckDB-backed database for testing."""
+    temp_dir = tempfile.mkdtemp()
+    temp_db_path = str(Path(temp_dir) / 'test.duckdb')
 
-    # Create and yield the database
     db = ArticleDB(temp_db_path)
     yield db
 
-    # Cleanup
     db.close()
-    Path(temp_db_path).unlink(missing_ok=True)
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -84,22 +83,19 @@ def populated_db(temp_db, sample_articles):
 
 
 @pytest.fixture
-def articles_json_data():
-    """Fixture providing all articles from articles.json."""
-    articles_file = Path('tests/fixtures/articles.json')
+def articles_parquet_data():
+    """Fixture providing all articles from the tests/fixtures/articles.parquet file."""
+    articles_file = Path('tests/fixtures/articles.parquet')
     if not articles_file.exists():
-        pytest.skip("articles.json file not found")
+        pytest.skip("articles.parquet fixture not found")
 
-    with open(articles_file) as f:
-        data = json.load(f)
-
-    # Extract articles from TinyDB format
-    articles = []
-    if '_default' in data:
-        for item in data['_default'].values():
-            articles.append(item)
-
-    return articles
+    con = duckdb.connect()
+    try:
+        rows = con.execute(f"SELECT * FROM read_parquet('{articles_file}')").fetchall()
+        columns = [col[0] for col in con.description]
+        return [dict(zip(columns, row, strict=False)) for row in rows]
+    finally:
+        con.close()
 
 
 class TestArticleDB:
@@ -108,21 +104,20 @@ class TestArticleDB:
     def test_db_initialization(self, temp_db):
         """Test that database initializes correctly."""
         assert isinstance(temp_db, ArticleDB)
-        assert temp_db.db_path.endswith('.json')
-        assert temp_db.db is not None
-        assert temp_db.Article is not None
+        assert temp_db.db_path.endswith('.duckdb')
+        assert temp_db.con is not None
 
     def test_db_initialization_with_custom_path(self):
         """Test database initialization with custom path."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            custom_path = f.name
+        temp_dir = tempfile.mkdtemp()
+        custom_path = str(Path(temp_dir) / 'custom.duckdb')
 
         try:
             db = ArticleDB(custom_path)
             assert db.db_path == custom_path
             db.close()
         finally:
-            Path(custom_path).unlink(missing_ok=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_insert_single_article(self, temp_db, sample_articles):
         """Test inserting a single article."""
@@ -175,6 +170,16 @@ class TestArticleDB:
         # Verify total count
         all_articles = temp_db.get_all_articles()
         assert len(all_articles) == 3
+
+    def test_insert_article_missing_optional_fields(self, temp_db):
+        """Test inserting an article with only a subset of fields round-trips nullable columns."""
+        result = temp_db.insert_article({'url': 'https://example.com/minimal', 'title': 'Minimal Article'})
+        assert result is True
+
+        stored = temp_db.search_by_url('https://example.com/minimal')
+        assert len(stored) == 1
+        assert stored[0]['djt_relevance_score'] is None
+        assert stored[0]['sentiment_score'] is None
 
     def test_search_by_url(self, populated_db, sample_articles):
         """Test searching articles by URL."""
@@ -288,12 +293,6 @@ class TestArticleDB:
         assert len(sorted_articles) == len(sample_articles)
 
         # Verify sorting (by published_at desc, then source asc)
-        # Articles should be in this order based on sample data:
-        # 1. Trump Musk article (2025-07-08 10:00, NYT)
-        # 2. Science article (2025-07-08 09:00, Science Daily)
-        # 3. Immigration article (2025-07-08 08:00, NYT)
-        # 4. Old article (2025-07-07 08:00, Old News)
-
         assert sorted_articles[0]['title'] == 'Trump Says Musk Is Off the Rails With America Party Effort'
         assert sorted_articles[1]['title'] == 'How to Make the Biggest Splash, According to Science'
         assert sorted_articles[2]['title'] == 'Can Democrats Find Their Way on Immigration?'
@@ -307,8 +306,8 @@ class TestArticleDB:
 
     def test_context_manager_usage(self, sample_articles):
         """Test using ArticleDB as context manager."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            temp_db_path = f.name
+        temp_dir = tempfile.mkdtemp()
+        temp_db_path = str(Path(temp_dir) / 'test.duckdb')
 
         try:
             # Use as context manager
@@ -321,20 +320,33 @@ class TestArticleDB:
                 assert len(db.get_all_articles()) == len(sample_articles)
 
         finally:
-            Path(temp_db_path).unlink(missing_ok=True)
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def test_close_method(self, temp_db):
         """Test explicit close method."""
         # Add some data
         temp_db.insert_article({'url': 'test', 'title': 'Test'})
+        temp_db_path = temp_db.db_path
 
         # Close the database
         temp_db.close()
 
         # Verify we can still create a new instance with same path
-        new_db = ArticleDB(temp_db.db_path)
+        new_db = ArticleDB(temp_db_path)
         assert len(new_db.get_all_articles()) == 1
         new_db.close()
+
+    def test_export_parquet_reflects_table_contents(self, temp_db, sample_articles):
+        """Test that the Parquet export always reflects the current table contents."""
+        temp_db.insert_articles(sample_articles)
+
+        con = duckdb.connect()
+        try:
+            count = con.execute(f"SELECT count(*) FROM read_parquet('{temp_db.parquet_path}')").fetchone()[0]
+        finally:
+            con.close()
+
+        assert count == len(sample_articles)
 
 
 class TestConvenienceFunctions:
@@ -342,8 +354,8 @@ class TestConvenienceFunctions:
 
     def test_create_article_db(self):
         """Test create_article_db convenience function."""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            temp_db_path = f.name
+        temp_dir = tempfile.mkdtemp()
+        temp_db_path = str(Path(temp_dir) / 'test.duckdb')
 
         try:
             db = create_article_db(temp_db_path)
@@ -351,132 +363,56 @@ class TestConvenienceFunctions:
             assert db.db_path == temp_db_path
             db.close()
         finally:
-            Path(temp_db_path).unlink(missing_ok=True)
-
-    def test_get_article_query(self):
-        """Test get_article_query convenience function."""
-        query = get_article_query()
-        # Verify it returns a Query object (basic duck typing test)
-        assert hasattr(query, 'url')
-        assert hasattr(query, 'category')
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 class TestDBWithRealData:
-    """Test cases using real articles.json data."""
+    """Test cases using the articles.parquet fixture."""
 
-    def test_real_articles_json_data(self, articles_json_data):
-        """Test that real articles.json data loads correctly."""
-        if len(articles_json_data) == 0:
+    def test_real_articles_parquet_data(self, articles_parquet_data):
+        """Test that the real articles.parquet fixture loads correctly."""
+        if len(articles_parquet_data) == 0:
             pytest.skip("No articles available in test data")
 
-        assert len(articles_json_data) > 0
+        assert len(articles_parquet_data) > 0
 
         # Verify article structure
-        for article in articles_json_data[:5]:  # Check first 5 articles
+        for article in articles_parquet_data[:5]:  # Check first 5 articles
             assert 'url' in article
             assert 'title' in article
             assert 'source' in article
 
-    def test_db_operations_with_real_data(self, articles_json_data):
+    def test_db_operations_with_real_data(self, articles_parquet_data):
         """Test database operations with real data."""
-        if len(articles_json_data) == 0:
+        if len(articles_parquet_data) == 0:
             pytest.skip("No articles available in test data")
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            temp_db_path = f.name
+        temp_dir = tempfile.mkdtemp()
+        temp_db_path = str(Path(temp_dir) / 'test.duckdb')
 
         try:
             db = ArticleDB(temp_db_path)
 
             # Insert real articles
-            inserted_count = db.insert_articles(articles_json_data)
-            assert inserted_count == len(articles_json_data)
+            inserted_count = db.insert_articles(articles_parquet_data)
+            assert inserted_count == len(articles_parquet_data)
 
             # Test various operations
             all_articles = db.get_all_articles()
-            assert len(all_articles) == len(articles_json_data)
+            assert len(all_articles) == len(articles_parquet_data)
 
             # Test search by category if categories exist
-            if articles_json_data:
-                first_article = articles_json_data[0]
-                if 'category' in first_article:
-                    category_results = db.search_by_category(first_article['category'])
-                    assert len(category_results) > 0
+            first_article = articles_parquet_data[0]
+            if 'category' in first_article and first_article['category']:
+                category_results = db.search_by_category(first_article['category'])
+                assert len(category_results) > 0
 
             # Test sort and reindex
             db.sort_and_reindex_articles()
             sorted_articles = db.get_all_articles()
-            assert len(sorted_articles) == len(articles_json_data)
+            assert len(sorted_articles) == len(articles_parquet_data)
 
             db.close()
 
         finally:
-            Path(temp_db_path).unlink(missing_ok=True)
-
-
-def test_db_integration():
-    """Integration test that replicates database operations."""
-    articles_file = Path('articles.json')
-    if not articles_file.exists():
-        pytest.skip("articles.json file not found for integration test")
-
-    try:
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-            temp_db_path = f.name
-
-        # Load real data
-        with open(articles_file) as f:
-            data = json.load(f)
-
-        # Extract articles from TinyDB format
-        articles = []
-        if '_default' in data:
-            for item in data['_default'].values():
-                articles.append(item)
-
-        # Test database operations
-        db = ArticleDB(temp_db_path)
-
-        # Insert articles
-        inserted_count = db.insert_articles(articles)
-        assert inserted_count == len(articles)
-
-        # Test search operations
-        all_articles = db.get_all_articles()
-        assert len(all_articles) == len(articles)
-
-        # Test URL search
-        if articles:
-            first_url = articles[0]['url']
-            search_results = db.search_by_url(first_url)
-            assert len(search_results) == 1
-            assert search_results[0]['url'] == first_url
-
-        # Test category search
-        if articles and 'category' in articles[0]:
-            category = articles[0]['category']
-            category_results = db.search_by_category(category)
-            assert len(category_results) > 0
-
-        # Test sorting
-        db.sort_and_reindex_articles()
-        sorted_articles = db.get_all_articles()
-        assert len(sorted_articles) == len(articles)
-
-        # Test cleanup
-        removed_count = db.clear_all_articles()
-        assert removed_count == len(articles)
-        assert len(db.get_all_articles()) == 0
-
-        db.close()
-
-    except Exception as e:
-        pytest.fail(f"Integration test failed: {e}")
-    finally:
-        Path(temp_db_path).unlink(missing_ok=True)
-
-
-if __name__ == "__main__":
-    # If run directly, execute the integration test
-    test_db_integration()
-    print("All tests would pass if run with pytest")
+            shutil.rmtree(temp_dir, ignore_errors=True)

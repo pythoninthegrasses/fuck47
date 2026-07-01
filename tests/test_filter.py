@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import json
 import pytest
 import sys
 from pathlib import Path
@@ -8,6 +7,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import duckdb
 from utils.filter import DJTNewsFilter
 
 
@@ -42,46 +42,31 @@ def sample_articles():
     ]
 
 
+def _load_articles_parquet():
+    articles_file = Path('tests/fixtures/articles.parquet')
+    if not articles_file.exists():
+        pytest.skip("articles.parquet fixture not found")
+
+    con = duckdb.connect()
+    try:
+        rows = con.execute(f"SELECT * FROM read_parquet('{articles_file}')").fetchall()
+        columns = [col[0] for col in con.description]
+        return [dict(zip(columns, row, strict=False)) for row in rows]
+    finally:
+        con.close()
+
+
 @pytest.fixture
 def articles_json_data():
-    """Fixture providing all articles from articles.json."""
-    articles_file = Path('tests/fixtures/articles.json')
-    if not articles_file.exists():
-        pytest.skip("articles.json file not found")
-
-    with open(articles_file) as f:
-        data = json.load(f)
-
-    # Extract articles from TinyDB format
-    articles = []
-    if '_default' in data:
-        for item in data['_default'].values():
-            articles.append(item)
-
-    return articles
+    """Fixture providing all articles from the articles.parquet fixture."""
+    return _load_articles_parquet()
 
 
 @pytest.fixture
 def filtered_articles_json_data():
-    """Fixture providing filtered articles from articles.json."""
-    articles_file = Path('tests/fixtures/articles.json')
-    if not articles_file.exists():
-        pytest.skip("articles.json file not found")
-
-    with open(articles_file) as f:
-        data = json.load(f)
-
-    # Extract articles from TinyDB format and filter for DJT-related ones
-    articles = []
-    if '_default' in data:
-        for item in data['_default'].values():
-            articles.append(item)
-
-    # Filter for DJT-related articles only
+    """Fixture providing DJT-related articles from the articles.parquet fixture."""
     djt_filter = DJTNewsFilter(min_score=1.0)
-    filtered_articles = djt_filter.filter_articles(articles)
-
-    return filtered_articles
+    return djt_filter.filter_articles(_load_articles_parquet())
 
 
 @pytest.fixture
@@ -163,11 +148,11 @@ class TestDJTNewsFilter:
 
 
 class TestFilterWithRealData:
-    """Test cases using real articles.json and filtered_articles.json data."""
+    """Test cases using the articles.parquet fixture data."""
 
     def test_articles_json_contains_all_articles(self, articles_json_data):
-        """Test that articles.json contains all articles (unfiltered)."""
-        assert len(articles_json_data) > 0, "articles.json should contain articles"
+        """Test that the articles fixture contains all articles (unfiltered)."""
+        assert len(articles_json_data) > 0, "articles fixture should contain articles"
 
         # Count DJT and non-DJT articles
         djt_filter = DJTNewsFilter(min_score=1.0)
@@ -176,7 +161,7 @@ class TestFilterWithRealData:
 
         assert djt_count > 0, "Should contain some DJT-related articles"
 
-        # Note: The current articles.json may contain only DJT-related articles
+        # Note: The current fixture may contain only DJT-related articles
         # depending on the filtering applied during data collection
         if non_djt_count == 0:
             print(f"All {len(articles_json_data)} articles are DJT-related")
@@ -184,16 +169,14 @@ class TestFilterWithRealData:
             print(f"Found {djt_count} DJT articles and {non_djt_count} non-DJT articles")
 
     def test_filtered_articles_json_contains_only_djt_articles(self, filtered_articles_json_data):
-        """Test that filtered_articles.json contains only DJT-related articles."""
+        """Test that the DJT-filtered fixture data contains only DJT-related articles."""
         if len(filtered_articles_json_data) == 0:
             pytest.skip("No filtered articles available")
 
         djt_filter = DJTNewsFilter(min_score=1.0)
 
         for article in filtered_articles_json_data:
-            assert djt_filter.is_djt_related(article), (
-                f"All articles in filtered_articles.json should be DJT-related: {article['title']}"
-            )
+            assert djt_filter.is_djt_related(article), f"All DJT-filtered articles should be DJT-related: {article['title']}"
             assert 'djt_relevance_score' in article, "Filtered articles should have relevance scores"
 
     def test_filtering_consistency(self, articles_json_data):
@@ -224,44 +207,25 @@ class TestFilterWithRealData:
 
 
 def test_filter_with_articles_integration():
-    """Integration test that replicates the original test_filter_with_articles function."""
-    articles_file = Path('articles.json')
-    if not articles_file.exists():
-        pytest.skip("articles.json file not found for integration test")
+    """Integration test that replicates the original test_filter_with_articles function, using the fixture data."""
+    articles = _load_articles_parquet()
 
-    try:
-        with open(articles_file) as f:
-            data = json.load(f)
+    djt_filter = DJTNewsFilter(min_score=1.0)
+    djt_articles = djt_filter.filter_articles(articles)
 
-        # Extract articles from TinyDB format
-        articles = []
-        if '_default' in data:
-            for item in data['_default'].values():
-                articles.append(item)
+    assert len(articles) > 0, "Should have articles to test with"
+    assert len(djt_articles) <= len(articles), "Filtered count should not exceed total count"
 
-        # Test filtering
-        djt_filter = DJTNewsFilter(min_score=1.0)
-        djt_articles = djt_filter.filter_articles(articles)
+    if len(djt_articles) > 0:
+        percentage = len(djt_articles) / len(articles) * 100
+        assert 0 < percentage <= 100, "Filtering percentage should be between 0 and 100"
 
-        # Basic assertions
-        assert len(articles) > 0, "Should have articles to test with"
-        assert len(djt_articles) <= len(articles), "Filtered count should not exceed total count"
+        for article in djt_articles:
+            assert 'djt_relevance_score' in article, "Filtered articles should have relevance scores"
+            assert article['djt_relevance_score'] >= 1.0, "All scores should meet minimum threshold"
 
-        if len(djt_articles) > 0:
-            percentage = len(djt_articles) / len(articles) * 100
-            assert 0 < percentage <= 100, "Filtering percentage should be between 0 and 100"
-
-            # Verify all filtered articles have scores
-            for article in djt_articles:
-                assert 'djt_relevance_score' in article, "Filtered articles should have relevance scores"
-                assert article['djt_relevance_score'] >= 1.0, "All scores should meet minimum threshold"
-
-        # Analyze keywords
-        keyword_analysis = djt_filter.analyze_keywords(articles)
-        assert isinstance(keyword_analysis, dict), "Keyword analysis should return a dictionary"
-
-    except Exception as e:
-        pytest.fail(f"Integration test failed: {e}")
+    keyword_analysis = djt_filter.analyze_keywords(articles)
+    assert isinstance(keyword_analysis, dict), "Keyword analysis should return a dictionary"
 
 
 if __name__ == "__main__":

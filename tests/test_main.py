@@ -1,13 +1,12 @@
 #!/usr/bin/env python
 
-import json
 import pytest
+import shutil
 import sys
 import tempfile
-import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -21,8 +20,8 @@ from utils.sentiment import SentimentJudgeError
 @pytest.fixture
 def temp_articles_db():
     """Fixture providing a temporary articles database for testing."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        temp_db_path = f.name
+    temp_dir = tempfile.mkdtemp()
+    temp_db_path = str(Path(temp_dir) / 'articles.duckdb')
 
     # Create and yield the database
     db = ArticleDB(temp_db_path)
@@ -30,14 +29,14 @@ def temp_articles_db():
 
     # Cleanup
     db.close()
-    Path(temp_db_path).unlink(missing_ok=True)
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
 def temp_filtered_db():
     """Fixture providing a temporary filtered articles database for testing."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        temp_filtered_path = f.name
+    temp_dir = tempfile.mkdtemp()
+    temp_filtered_path = str(Path(temp_dir) / 'filtered_articles.duckdb')
 
     # Create and yield the database
     db = ArticleDB(temp_filtered_path)
@@ -45,7 +44,7 @@ def temp_filtered_db():
 
     # Cleanup
     db.close()
-    Path(temp_filtered_path).unlink(missing_ok=True)
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
@@ -157,7 +156,7 @@ class TestMainE2E:
         ):
             # Set up mocks
             mock_filtered_db = Mock()
-            mock_create_db.return_value = mock_filtered_db  # For filtered_articles.json
+            mock_create_db.return_value = mock_filtered_db  # For the filtered articles store
             mock_newsapi.return_value = []
             mock_rss.return_value = []
             mock_main_db.insert_articles.return_value = 0
@@ -167,7 +166,7 @@ class TestMainE2E:
             main()
 
             # Verify filtered database was created
-            mock_create_db.assert_called_once_with('filtered_articles.json')
+            mock_create_db.assert_called_once_with('filtered_articles.duckdb')
 
             # Verify NewsAPI and RSS articles were fetched
             mock_newsapi.assert_called_once_with(mock_main_db)
@@ -350,9 +349,9 @@ class TestMainIntegration:
         ):
 
             def mock_create_side_effect(filename):
-                if filename == 'articles.json':
+                if filename == 'articles.duckdb':
                     return article_db
-                elif filename == 'filtered_articles.json':
+                elif filename == 'filtered_articles.duckdb':
                     return filtered_db
                 else:
                     raise ValueError(f"Unexpected filename: {filename}")
@@ -431,7 +430,7 @@ class TestMainSentimentGate:
 
     @patch('main.score_articles')
     def test_judge_failure_leaves_filtered_articles_untouched(self, mock_score_articles, temp_articles_db, temp_filtered_db):
-        """When the judge call fails, filtered_articles.json is left as-is (not cleared/rewritten)."""
+        """When the judge call fails, the filtered articles store is left as-is (not cleared/rewritten)."""
         article_db, temp_path = temp_articles_db
         filtered_db, filtered_path = temp_filtered_db
 
@@ -536,7 +535,7 @@ def test_main_e2e_integration():
             # Verify key functions were called
             mock_newsapi.assert_called_once()
             mock_rss.assert_called_once()
-            mock_create_db.assert_called_once_with('filtered_articles.json')
+            mock_create_db.assert_called_once_with('filtered_articles.duckdb')
 
     except Exception as e:
         pytest.fail(f"End-to-end integration test failed: {e}")

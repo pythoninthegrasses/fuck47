@@ -2,6 +2,7 @@
 
 import json
 import pytest
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -17,8 +18,8 @@ from utils.newsapi import parse_articles
 @pytest.fixture
 def temp_db():
     """Fixture providing a temporary database for testing."""
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        temp_db_path = f.name
+    temp_dir = tempfile.mkdtemp()
+    temp_db_path = str(Path(temp_dir) / 'test.duckdb')
 
     # Create and yield the database
     db = ArticleDB(temp_db_path)
@@ -26,7 +27,7 @@ def temp_db():
 
     # Cleanup
     db.close()
-    Path(temp_db_path).unlink(missing_ok=True)
+    shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
