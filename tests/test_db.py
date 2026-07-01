@@ -15,7 +15,12 @@ from utils.db import ArticleDB, create_article_db, get_article_query
 
 @pytest.fixture
 def sample_articles():
-    """Fixture providing sample articles for testing."""
+    """Fixture providing sample articles for testing.
+
+    published_at values are relative to now so the fixture stays valid
+    regardless of when the test suite runs (see clear_old_articles tests).
+    """
+    now = datetime.now()
     return [
         {
             'title': 'Trump Says Musk Is Off the Rails With America Party Effort',
@@ -24,7 +29,7 @@ def sample_articles():
             'source': 'NYT > U.S. > Politics',
             'category': 'rss',
             'author': 'Tyler Pager',
-            'published_at': '2025-07-08 10:00',
+            'published_at': (now - timedelta(hours=2)).strftime('%Y-%m-%d %H:%M'),
         },
         {
             'title': 'How to Make the Biggest Splash, According to Science',
@@ -33,7 +38,7 @@ def sample_articles():
             'source': 'Science Daily',
             'category': 'science',
             'author': 'John Smith',
-            'published_at': '2025-07-08 09:00',
+            'published_at': (now - timedelta(hours=3)).strftime('%Y-%m-%d %H:%M'),
         },
         {
             'title': 'Can Democrats Find Their Way on Immigration?',
@@ -42,7 +47,7 @@ def sample_articles():
             'source': 'NYT > U.S. > Politics',
             'category': 'rss',
             'author': 'Lisa Lerer',
-            'published_at': '2025-07-08 08:00',
+            'published_at': (now - timedelta(hours=4)).strftime('%Y-%m-%d %H:%M'),
         },
         {
             'title': 'Old Article from Yesterday',
@@ -51,7 +56,7 @@ def sample_articles():
             'source': 'Old News',
             'category': 'general',
             'author': 'Old Reporter',
-            'published_at': '2025-07-07 08:00',
+            'published_at': (now - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M'),
         },
     ]
 
