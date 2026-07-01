@@ -33,3 +33,12 @@ CATEGORIES = (
 # DJT filtering configuration
 DJT_FILTER_ENABLED = config('DJT_FILTER_ENABLED', default=True, cast=bool)
 DJT_FILTER_MIN_SCORE = config('DJT_FILTER_MIN_SCORE', default=1.0, cast=float)
+
+# Sentiment analysis configuration (see docs/ai.md)
+SENTIMENT_ENABLED = config('SENTIMENT_ENABLED', default=True, cast=bool)
+SENTIMENT_MAX_SCORE = config('SENTIMENT_MAX_SCORE', default=0.0, cast=float)
+
+# LLM judge configuration - any OpenAI-compatible chat completions endpoint (default: Fireworks)
+LLM_API_KEY = config('LLM_API_KEY', default="")
+LLM_BASE_URL = config('LLM_BASE_URL', default="https://api.fireworks.ai/inference/v1")
+LLM_MODEL = config('LLM_MODEL', default="accounts/fireworks/models/gpt-oss-20b")

@@ -3,6 +3,7 @@ id: doc-001
 title: 'PRD: DJT News Sentiment Analysis Feature'
 type: other
 created_date: '2026-07-01 18:57'
+updated_date: '2026-07-01 21:11'
 ---
 # PRD: DJT News Sentiment Analysis Feature
 
@@ -93,7 +94,7 @@ This feature will transform the existing static landing page into a dynamic news
 - **Security**: Store API keys in environment variables, never commit to repository
 - **Reliability**: Implement retry logic for failed API calls and graceful degradation
 - **GitHub Pages**: Ensure all generated content is compatible with GitHub Pages hosting
-- **Python Dependencies**: Use lightweight libraries for sentiment analysis (TextBlob, VADER) to minimize build complexity
+- **Sentiment Analysis**: Use a single batched call to an LLM judge (see `docs/ai.md`) rather than a lightweight lexicon library (TextBlob, VADER) — lexicon scorers miss critical political framing that uses no lexically-negative words. The judge is called via a configurable OpenAI-compatible endpoint (default: Fireworks-hosted `accounts/fireworks/models/gpt-oss-20b`), so switching providers is a config-only change.
 
 ## Success Metrics
 

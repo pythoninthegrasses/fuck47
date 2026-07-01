@@ -5,6 +5,7 @@ import pytest
 import sys
 import tempfile
 import time
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import Mock, call, patch
 
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from main import main
 from utils.db import ArticleDB
 from utils.filter import DJTNewsFilter
+from utils.sentiment import SentimentJudgeError
 
 
 @pytest.fixture
@@ -377,13 +379,98 @@ class TestMainIntegration:
             assert any('Stored' in call and 'RSS feeds' in call for call in print_calls)
 
 
+class TestMainSentimentGate:
+    """Test cases for the sentiment-based negative-only filtering gate in main()."""
+
+    def _djt_article(self, title, url, minutes_ago=0):
+        # published_at must be recent (relative to "now") so clear_old_articles()
+        # doesn't purge it before the sentiment gate runs.
+        published_at = (datetime.now() - timedelta(minutes=minutes_ago)).strftime('%Y-%m-%d %H:%M')
+        return {
+            'title': title,
+            'url': url,
+            'source': 'News Source',
+            'category': 'politics',
+            'published_at': published_at,
+            'description': 'Trump-related coverage',
+            'author': 'Reporter',
+        }
+
+    @patch('main.score_articles')
+    def test_negative_and_positive_articles_split_at_threshold(self, mock_score_articles, temp_articles_db, temp_filtered_db):
+        """Articles are included/excluded based on SENTIMENT_MAX_SCORE boundary (<=)."""
+        article_db, temp_path = temp_articles_db
+        filtered_db, filtered_path = temp_filtered_db
+
+        articles = [
+            self._djt_article('Trump Negative Article', 'https://example.com/neg', minutes_ago=10),
+            self._djt_article('Trump Boundary Article', 'https://example.com/boundary', minutes_ago=20),
+            self._djt_article('Trump Positive Article', 'https://example.com/pos', minutes_ago=30),
+        ]
+        article_db.insert_articles(articles)
+
+        # index 0: below threshold (included), 1: exactly at threshold (included, <=), 2: above (excluded)
+        mock_score_articles.return_value = {0: -0.5, 1: 0.0, 2: 0.5}
+
+        with (
+            patch('main.fetch_rss_articles', return_value=[]),
+            patch('main.fetch_and_store_articles', return_value=[]),
+            patch('main.article_db', article_db),
+            patch('main.create_article_db', return_value=filtered_db),
+            patch('main.CACHE_HOURS', 24),
+            patch('main.DJT_FILTER_ENABLED', True),
+            patch('main.DJT_FILTER_MIN_SCORE', 1.0),
+            patch('main.SENTIMENT_ENABLED', True),
+            patch('main.SENTIMENT_MAX_SCORE', 0.0),
+        ):
+            main()
+
+        stored = filtered_db.get_all_articles()
+        stored_titles = {a['title'] for a in stored}
+        assert stored_titles == {'Trump Negative Article', 'Trump Boundary Article'}
+
+    @patch('main.score_articles')
+    def test_judge_failure_leaves_filtered_articles_untouched(self, mock_score_articles, temp_articles_db, temp_filtered_db):
+        """When the judge call fails, filtered_articles.json is left as-is (not cleared/rewritten)."""
+        article_db, temp_path = temp_articles_db
+        filtered_db, filtered_path = temp_filtered_db
+
+        # Pre-populate filtered_db to simulate a previous successful run.
+        previous_article = self._djt_article('Previous Run Article', 'https://example.com/prev', minutes_ago=60)
+        filtered_db.insert_articles([previous_article])
+
+        new_articles = [self._djt_article('Trump New Article', 'https://example.com/new', minutes_ago=10)]
+        article_db.insert_articles(new_articles)
+
+        mock_score_articles.side_effect = SentimentJudgeError("simulated judge failure")
+
+        with (
+            patch('main.fetch_rss_articles', return_value=[]),
+            patch('main.fetch_and_store_articles', return_value=[]),
+            patch('main.article_db', article_db),
+            patch('main.create_article_db', return_value=filtered_db),
+            patch('main.CACHE_HOURS', 24),
+            patch('main.DJT_FILTER_ENABLED', True),
+            patch('main.DJT_FILTER_MIN_SCORE', 1.0),
+            patch('main.SENTIMENT_ENABLED', True),
+        ):
+            # Should not raise despite the sentiment judge failing.
+            main()
+
+        stored = filtered_db.get_all_articles()
+        assert len(stored) == 1
+        assert stored[0]['title'] == 'Previous Run Article'
+
+
 class TestMainErrorHandling:
     """Test cases for error handling in main() function."""
 
+    @patch('main.score_articles')
     @patch('main.create_article_db')
-    def test_main_with_database_error(self, mock_create_db):
+    def test_main_with_database_error(self, mock_create_db, mock_score_articles):
         """Test main() function with database creation error."""
         mock_create_db.side_effect = Exception("Database creation failed")
+        mock_score_articles.side_effect = lambda articles: {i: 0.0 for i in range(len(articles))}
 
         # Should handle database errors gracefully
         with pytest.raises(Exception, match="Database creation failed"):
