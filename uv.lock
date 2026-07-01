@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.12.*"
 
 [options]
@@ -187,6 +187,21 @@ wheels = [
 ]
 
 [[package]]
+name = "duckdb"
+version = "1.6.0.dev214"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/85/57/de12f60ca4badc65c2ca16b01466a6288746b96b4e24db5331e850b53b28/duckdb-1.6.0.dev214.tar.gz", hash = "sha256:79defc94faad764f0f4d8965f88bfab43ed2e2507326daa11583c0d251ed6ce6", size = 17522280, upload-time = "2026-07-01T07:53:16.215Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/75/c5/ddd0f96cdc439d5e4411d516f0e7b4cb4343a950f5fc7693d91b17155e43/duckdb-1.6.0.dev214-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:0689235752657be561f5c3a252d7dbc46b382bd160535780ee9721d672b51af7", size = 37648147, upload-time = "2026-07-01T07:52:07.087Z" },
+    { url = "https://files.pythonhosted.org/packages/f7/31/a69b4712c0f59a5fdc9cdd4d447e74734a421f13e332a5b82afc7cb57c74/duckdb-1.6.0.dev214-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:6fc1d03a8ff8f21b2cb4e11017328bc92d28fa19e4015177fb73359d3d9196a2", size = 19894873, upload-time = "2026-07-01T07:52:09.982Z" },
+    { url = "https://files.pythonhosted.org/packages/95/31/e1eecd6bb773e5e76ef91183b658f6c8ee4473f4b019c694e278bd1c8047/duckdb-1.6.0.dev214-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:f5c52bb2daed5c58bcebfcaa044cb2d7e24694b655b506aff2c3a9ba92325302", size = 17887832, upload-time = "2026-07-01T07:52:12.84Z" },
+    { url = "https://files.pythonhosted.org/packages/06/2b/39ee179c3b8a30e8f905152b62de06889ff42ec1882d21452bd19bd014c6/duckdb-1.6.0.dev214-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:50e5b36f04e7e2793c58fdf480b86e4b3b8d385c5089467e36c5e1a5b419e054", size = 21950008, upload-time = "2026-07-01T07:52:15.711Z" },
+    { url = "https://files.pythonhosted.org/packages/49/79/11f177e11e809610d362322de6e5f4134120372260d1a765b3897c195777/duckdb-1.6.0.dev214-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:990fdeab59265ee09282692a6b1119533f2619b0c9a2f7fb29e72e013469a762", size = 24265533, upload-time = "2026-07-01T07:52:18.927Z" },
+    { url = "https://files.pythonhosted.org/packages/25/2a/49fc2477af318f79e92588d3671837c2924a8d085542f61c5096f3e080e5/duckdb-1.6.0.dev214-cp312-cp312-win_amd64.whl", hash = "sha256:5e823fe55acd3cebbfaf842e6e1464cb2651022b331519884a72c88025dc7f84", size = 14253741, upload-time = "2026-07-01T07:52:21.826Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/ca/41ffa0b058327596c4123cb19920865c5d43d88a0a9ebf22f275149b8a5d/duckdb-1.6.0.dev214-cp312-cp312-win_arm64.whl", hash = "sha256:65c230bd635b6874d794227ae33a1c0e6cb3f76c0bdd3d2b78b3702daaf4d9c9", size = 15024926, upload-time = "2026-07-01T07:52:24.747Z" },
+]
+
+[[package]]
 name = "eliot"
 version = "1.17.5"
 source = { registry = "https://pypi.org/simple" }
@@ -254,6 +269,7 @@ name = "fuck47"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "duckdb" },
     { name = "eliot" },
     { name = "eliot-tree" },
     { name = "feedparser" },
@@ -261,7 +277,6 @@ dependencies = [
     { name = "python-decouple" },
     { name = "requests" },
     { name = "requests-cache" },
-    { name = "tinydb" },
 ]
 
 [package.optional-dependencies]
@@ -293,6 +308,7 @@ requires-dist = [
     { name = "argcomplete", marker = "extra == 'dev'", specifier = ">=3.5.0,<4.0.0" },
     { name = "coverage", marker = "extra == 'test'", specifier = ">=7.6.1,<8.0.0" },
     { name = "deptry", marker = "extra == 'dev'", specifier = ">=0.23.0,<1.0.0" },
+    { name = "duckdb", specifier = ">=1.1.0,<2" },
     { name = "eliot", specifier = ">=1.17.5" },
     { name = "eliot-tree", specifier = ">=24.0.0" },
     { name = "feedparser", specifier = ">=6.0.11" },
@@ -315,7 +331,6 @@ requires-dist = [
     { name = "requests-cache", specifier = ">=1.3.0a0" },
     { name = "rich", marker = "extra == 'dev'", specifier = ">=13.8.1,<14.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9.5" },
-    { name = "tinydb", specifier = ">=4.8.2" },
 ]
 provides-extras = ["dev", "test"]
 
@@ -842,15 +857,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29519eb6884dd1415ecb53b0e934862d3559ddcb7e20b/stack_data-0.6.3.tar.gz", hash = "sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9", size = 44707, upload-time = "2023-09-30T13:58:05.479Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521, upload-time = "2023-09-30T13:58:03.53Z" },
-]
-
-[[package]]
-name = "tinydb"
-version = "4.8.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a0/79/4af51e2bb214b6ea58f857c51183d92beba85b23f7ba61c983ab3de56c33/tinydb-4.8.2.tar.gz", hash = "sha256:f7dfc39b8d7fda7a1ca62a8dbb449ffd340a117c1206b68c50b1a481fb95181d", size = 32566, upload-time = "2024-10-12T15:24:01.13Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/17/853354204e1ca022d6b7d011ca7f3206c4f8faa3cc743e92609b49c1d83f/tinydb-4.8.2-py3-none-any.whl", hash = "sha256:f97030ee5cbc91eeadd1d7af07ab0e48ceb04aa63d4a983adbaca4cba16e86c3", size = 24888, upload-time = "2024-10-12T15:23:59.833Z" },
 ]
 
 [[package]]

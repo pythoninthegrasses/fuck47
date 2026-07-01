@@ -1,24 +1,60 @@
 #!/usr/bin/env python
 
-import json
+import duckdb
 from datetime import datetime, timedelta
-from tinydb import Query, TinyDB
+from pathlib import Path
+
+ARTICLE_COLUMNS = [
+    'url',
+    'published_at',
+    'title',
+    'description',
+    'source',
+    'category',
+    'author',
+    'djt_relevance_score',
+    'sentiment_score',
+]
 
 
 class ArticleDB:
-    """Database manager for article storage and operations"""
+    """Database manager for article storage and operations, backed by DuckDB with a Parquet export."""
 
-    def __init__(self, db_path='articles.json'):
+    def __init__(self, db_path='articles.duckdb'):
         self.db_path = db_path
-        self.db = TinyDB(db_path)
-        self.Article = Query()
+        self.parquet_path = str(Path(db_path).with_suffix('.parquet'))
+        self.con = duckdb.connect(db_path)
+        self.con.execute("""
+            CREATE TABLE IF NOT EXISTS articles (
+                url VARCHAR PRIMARY KEY,
+                published_at VARCHAR,
+                title VARCHAR,
+                description VARCHAR,
+                source VARCHAR,
+                category VARCHAR,
+                author VARCHAR,
+                djt_relevance_score DOUBLE,
+                sentiment_score DOUBLE
+            )
+        """)
+        self._export_parquet()
+
+    def _export_parquet(self):
+        """Write the current table contents to the Parquet interchange file."""
+        self.con.execute(f"COPY articles TO '{self.parquet_path}' (FORMAT parquet)")
+
+    def _row_values(self, article):
+        url = article.get('url')
+        return [url.lower() if url else url] + [article.get(col) for col in ARTICLE_COLUMNS[1:]]
 
     def insert_article(self, article):
         """Insert a single article if it doesn't already exist"""
-        if not self.db.search(self.Article.url == article['url']):
-            self.db.insert(article)
-            return True
-        return False
+        result = self.con.execute(
+            "INSERT INTO articles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING RETURNING url",
+            self._row_values(article),
+        ).fetchall()
+        self._export_parquet()
+        return len(result) > 0
 
     def insert_articles(self, articles):
         """Insert multiple articles, skipping duplicates"""
@@ -30,24 +66,34 @@ class ArticleDB:
 
     def search_by_url(self, url):
         """Search for articles by URL"""
-        return self.db.search(self.Article.url == url)
+        rows = self.con.execute("SELECT * FROM articles WHERE url = ?", [url.lower() if url else url]).fetchall()
+        return self._rows_to_dicts(rows)
 
     def search_by_category(self, category):
         """Search for articles by category"""
-        return self.db.search(self.Article.category == category)
+        rows = self.con.execute("SELECT * FROM articles WHERE category = ?", [category]).fetchall()
+        return self._rows_to_dicts(rows)
 
     def get_all_articles(self):
-        """Get all articles from the database"""
-        return self.db.all()
+        """Get all articles from the database, ordered by published_at (desc) then source (asc)"""
+        rows = self.con.execute("SELECT * FROM articles ORDER BY published_at DESC, source ASC").fetchall()
+        return self._rows_to_dicts(rows)
+
+    def _rows_to_dicts(self, rows):
+        columns = [col[0] for col in self.con.description]
+        return [dict(zip(columns, row, strict=False)) for row in rows]
 
     def remove_by_url(self, url):
         """Remove articles by URL"""
-        return self.db.remove(self.Article.url == url)
+        result = self.con.execute("DELETE FROM articles WHERE url = ? RETURNING *", [url.lower() if url else url]).fetchall()
+        self._export_parquet()
+        return self._rows_to_dicts(result)
 
     def clear_all_articles(self):
         """Clear all articles from the database"""
-        removed_count = len(self.db.all())
-        self.db.truncate()
+        removed_count = self.con.execute("SELECT count(*) FROM articles").fetchone()[0]
+        self.con.execute("DELETE FROM articles")
+        self._export_parquet()
         print(f"Cleared {removed_count} articles from database")
         return removed_count
 
@@ -56,56 +102,27 @@ class ArticleDB:
         cutoff = datetime.now() - timedelta(hours=hours)
         cutoff_str = cutoff.strftime('%Y-%m-%d %H:%M')
 
-        # Remove articles older than cutoff
-        old_articles = self.db.search(self.Article.published_at < cutoff_str)
-        for article in old_articles:
-            self.db.remove(self.Article.url == article['url'])
+        removed = self.con.execute("DELETE FROM articles WHERE published_at < ? RETURNING url", [cutoff_str]).fetchall()
+        self._export_parquet()
 
-        print(f"Removed {len(old_articles)} old articles")
-        return len(old_articles)
+        print(f"Removed {len(removed)} old articles")
+        return len(removed)
 
     def sort_and_reindex_articles(self):
-        """Sort articles by published_at (desc) then source (asc) and rewrite TinyDB IDs"""
-        # Get all articles
-        all_articles = self.db.all()
+        """Persist the current articles ordered by published_at (desc) then source (asc)"""
+        count = self.con.execute("SELECT count(*) FROM articles").fetchone()[0]
 
-        if not all_articles:
+        if not count:
             print("No articles to sort")
-            return
+            return None
 
-        # Sort articles by published_at (desc) then source (asc)
-        def sort_key(article):
-            # Parse published_at to datetime for proper sorting
-            try:
-                pub_date = datetime.strptime(article['published_at'], '%Y-%m-%d %H:%M')
-            except ValueError:
-                # Fallback if format is different
-                pub_date = datetime.min
-
-            # Return tuple: (-timestamp for desc, source for asc)
-            return (-pub_date.timestamp(), article['source'])
-
-        sorted_articles = sorted(all_articles, key=sort_key)
-
-        # Manually create new TinyDB structure with sequential IDs
-        new_data = {"_default": {}}
-        for i, article in enumerate(sorted_articles, 1):
-            new_data["_default"][str(i)] = article
-
-        # Write the new structure directly to the JSON file
-        self.db.close()
-        with open(self.db_path, 'w') as f:
-            json.dump(new_data, f, indent=2)
-
-        # Reload the database to reflect changes
-        self.db = TinyDB(self.db_path)
-
-        print(f"Sorted and reindexed {len(sorted_articles)} articles by published_at (desc) then source (asc)")
-        return self.db
+        self._export_parquet()
+        print(f"Sorted and reindexed {count} articles by published_at (desc) then source (asc)")
+        return self
 
     def close(self):
         """Close the database connection"""
-        self.db.close()
+        self.con.close()
 
     def __enter__(self):
         """Context manager entry"""
@@ -116,12 +133,6 @@ class ArticleDB:
         self.close()
 
 
-# Convenience functions for backward compatibility
-def create_article_db(db_path='articles.json'):
+def create_article_db(db_path='articles.duckdb'):
     """Create and return an ArticleDB instance"""
     return ArticleDB(db_path)
-
-
-def get_article_query():
-    """Get a Query instance for article operations"""
-    return Query()
