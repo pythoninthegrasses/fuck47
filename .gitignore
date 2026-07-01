@@ -1,10 +1,10 @@
 # ETC
-.claude/
 .ruff*
 *.pdf
 *.pem
 *.sqlite
 articles.json
+CLAUDE.md
 
 # General
 .DS_Store
