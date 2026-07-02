@@ -108,6 +108,25 @@ class ArticleDB:
         print(f"Removed {len(removed)} old articles")
         return len(removed)
 
+    def archive_snapshot(self, archive_dir, run_at):
+        """Write the current table contents as a dated snapshot under archive_dir.
+
+        Never truncates or overwrites prior snapshots: each run writes to
+        archive_dir/<store>/<date>/<timestamp>.parquet, where <store> is derived
+        from db_path so distinct stores (e.g. articles vs filtered_articles) land
+        in separate subtrees of the same archive.
+        """
+        store_name = Path(self.db_path).stem
+        date_dir = Path(archive_dir) / store_name / run_at.strftime('%Y-%m-%d')
+        date_dir.mkdir(parents=True, exist_ok=True)
+        snapshot_path = date_dir / f"{run_at.strftime('%Y-%m-%dT%H%M')}.parquet"
+
+        self.con.execute(
+            "COPY (SELECT *, ? AS run_at FROM articles) TO ? (FORMAT parquet)",
+            [run_at, str(snapshot_path)],
+        )
+        return str(snapshot_path)
+
     def sort_and_reindex_articles(self):
         """Persist the current articles ordered by published_at (desc) then source (asc)"""
         count = self.con.execute("SELECT count(*) FROM articles").fetchone()[0]

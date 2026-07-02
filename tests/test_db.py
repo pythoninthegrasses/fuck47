@@ -349,6 +349,89 @@ class TestArticleDB:
         assert count == len(sample_articles)
 
 
+class TestArchiveSnapshot:
+    """Test cases for ArticleDB.archive_snapshot."""
+
+    def test_writes_snapshot_to_partitioned_path(self, temp_db, sample_articles, tmp_path):
+        """Snapshot lands at archive/<store>/<date>/<timestamp>.parquet."""
+        temp_db.insert_articles(sample_articles)
+        run_at = datetime(2026, 7, 1, 14, 0)
+        archive_dir = tmp_path / 'archive'
+
+        snapshot_path = temp_db.archive_snapshot(str(archive_dir), run_at)
+
+        store_name = Path(temp_db.db_path).stem
+        expected_path = archive_dir / store_name / '2026-07-01' / '2026-07-01T1400.parquet'
+        assert snapshot_path == str(expected_path)
+        assert expected_path.exists()
+
+    def test_snapshot_contains_run_at_and_article_columns(self, temp_db, sample_articles, tmp_path):
+        """Snapshot rows carry the existing article columns plus a run_at column."""
+        temp_db.insert_articles(sample_articles)
+        run_at = datetime(2026, 7, 1, 14, 0)
+
+        snapshot_path = temp_db.archive_snapshot(str(tmp_path / 'archive'), run_at)
+
+        con = duckdb.connect()
+        try:
+            rows = con.execute(f"SELECT * FROM read_parquet('{snapshot_path}')").fetchall()
+            columns = [col[0] for col in con.description]
+        finally:
+            con.close()
+
+        assert len(rows) == len(sample_articles)
+        assert 'run_at' in columns
+        for row in rows:
+            assert dict(zip(columns, row, strict=False))['run_at'] == run_at
+
+    def test_repeated_snapshots_same_day_do_not_overwrite(self, temp_db, sample_articles, tmp_path):
+        """Two runs on the same day produce two distinct files, neither overwritten."""
+        temp_db.insert_articles(sample_articles)
+        archive_dir = tmp_path / 'archive'
+
+        first_path = temp_db.archive_snapshot(str(archive_dir), datetime(2026, 7, 1, 14, 0))
+        second_path = temp_db.archive_snapshot(str(archive_dir), datetime(2026, 7, 1, 20, 0))
+
+        assert first_path != second_path
+        assert Path(first_path).exists()
+        assert Path(second_path).exists()
+
+    def test_archive_never_truncated(self, temp_db, sample_articles, tmp_path):
+        """Writing a new snapshot does not remove or modify prior snapshot files."""
+        temp_db.insert_articles(sample_articles)
+        archive_dir = tmp_path / 'archive'
+
+        first_path = temp_db.archive_snapshot(str(archive_dir), datetime(2026, 7, 1, 14, 0))
+        first_mtime = Path(first_path).stat().st_mtime
+        temp_db.archive_snapshot(str(archive_dir), datetime(2026, 7, 2, 14, 0))
+
+        assert Path(first_path).exists()
+        assert Path(first_path).stat().st_mtime == first_mtime
+
+    def test_read_parquet_glob_returns_union_across_stores(self, temp_db, sample_articles, tmp_path):
+        """read_parquet over the archive glob returns snapshots from every store."""
+        temp_dir2 = tempfile.mkdtemp()
+        try:
+            other_db = ArticleDB(str(Path(temp_dir2) / 'filtered_articles.duckdb'))
+            other_db.insert_articles(sample_articles[:2])
+
+            archive_dir = tmp_path / 'archive'
+            temp_db.insert_articles(sample_articles)
+            temp_db.archive_snapshot(str(archive_dir), datetime(2026, 7, 1, 14, 0))
+            other_db.archive_snapshot(str(archive_dir), datetime(2026, 7, 1, 14, 0))
+            other_db.close()
+
+            con = duckdb.connect()
+            try:
+                count = con.execute(f"SELECT count(*) FROM read_parquet('{archive_dir}/**/*.parquet')").fetchone()[0]
+            finally:
+                con.close()
+
+            assert count == len(sample_articles) + 2
+        finally:
+            shutil.rmtree(temp_dir2, ignore_errors=True)
+
+
 class TestConvenienceFunctions:
     """Test cases for convenience functions."""
 
