@@ -1,0 +1,47 @@
+{
+  "note": "Source imagery for the poster treatment. Assumed fair use (transformative political parody/commentary); attribution retained for display.",
+  "images": [
+    {
+      "file": "fc_every-brand-has-a-cherished-storyline_20170131.webp",
+      "outlet": "Fast Company",
+      "title": "Every Brand Has A Cherished Storyline, And Trump Is No Different",
+      "date": "2017-01-31"
+    },
+    {
+      "file": "nyt_intropic_20240705.webp",
+      "outlet": "The New York Times",
+      "title": "Intropic",
+      "date": "2024-07-05"
+    },
+    {
+      "file": "loc_official-portrait_nd.webp",
+      "outlet": "Library of Congress",
+      "title": "Official portrait of President Donald J. Trump",
+      "date": null
+    },
+    {
+      "file": "rs_trump-13-biggest-biz-fails_20160314.webp",
+      "outlet": "Rolling Stone",
+      "title": "Trump's 13 Biggest Business Failures",
+      "date": "2016-03-14"
+    },
+    {
+      "file": "thinkprogress_trump-broke-80-promises-100-days_20170429.webp",
+      "outlet": "ThinkProgress",
+      "title": "Trump Broke 80 Promises In His First 100 Days",
+      "date": "2017-04-29"
+    },
+    {
+      "file": "vox_trump-gestures_20190215.webp",
+      "outlet": "Vox",
+      "title": "Trump gestures",
+      "date": "2019-02-15"
+    },
+    {
+      "file": "wapo_profit_20260701.webp",
+      "outlet": "The Washington Post",
+      "title": "Profit",
+      "date": "2026-07-01"
+    }
+  ]
+}
