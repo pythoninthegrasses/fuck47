@@ -50,7 +50,7 @@ def _parse_response(raw_content: str, expected_count: int) -> dict[int, float]:
 
     try:
         parsed = json.loads(cleaned)
-    except (json.JSONDecodeError, TypeError):
+    except json.JSONDecodeError, TypeError:
         # Some models (e.g. reasoning models via a local server) wrap the JSON array in
         # surrounding prose despite the system prompt asking for JSON only. Retry once
         # against the outermost [...] substring before giving up.
