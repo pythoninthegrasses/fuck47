@@ -3,6 +3,7 @@
 import feedparser
 from config import EXCLUDE_URLS, RSS_FEEDS
 from datetime import datetime
+from utils.retry import feed_with_retry
 
 
 class RSSFeedParser:
@@ -80,7 +81,7 @@ class RSSFeedParser:
             print(f"Fetching RSS feed: {rss_url}")
 
             # Use feedparser to parse the RSS feed
-            feed = feedparser.parse(rss_url)
+            feed = feed_with_retry(lambda: feedparser.parse(rss_url))
 
             # Check if feed was successfully parsed
             if hasattr(feed, 'status') and feed.status != 200:

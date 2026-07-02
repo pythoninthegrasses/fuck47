@@ -686,6 +686,59 @@ def test_rss_integration():
         pytest.fail(f"Integration test failed: {e}")
 
 
+class TestParseFeedRetry:
+    """Test retry and graceful degradation in RSS feed parsing."""
+
+    @patch('utils.retry.time.sleep')
+    @patch('utils.rss.feedparser.parse')
+    def test_parse_multiple_feeds_skips_failing_feed_continues_to_next(self, mock_feedparser, mock_sleep):
+        """Feed raising exception after all retries is skipped; pipeline returns articles from remaining feeds."""
+        good_feed = Mock()
+        good_feed.status = 200
+        good_feed.feed = Mock()
+        good_feed.feed.title = 'Good Feed'
+        good_feed.feed.get = lambda key, default=None: getattr(good_feed.feed, key, default)
+
+        entry = Mock()
+        entry.title = 'Good Article'
+        entry.link = 'https://example.com/good-article'
+        entry.description = 'Good description'
+        entry.author = 'Test Author'
+        entry.published_parsed = time.struct_time((2025, 7, 8, 10, 30, 0, 0, 0, 0))
+        entry.get = lambda key, default=None: getattr(entry, key, default)
+        good_feed.entries = [entry]
+
+        def parse_side_effect(url):
+            if 'failing' in url:
+                raise Exception("connection refused")
+            return good_feed
+
+        mock_feedparser.side_effect = parse_side_effect
+
+        parser = RSSFeedParser(exclude_urls="")
+        articles = parser.parse_multiple_feeds(['https://failing.com/feed', 'https://good.com/feed'])
+
+        assert len(articles) == 1
+        assert articles[0]['title'] == 'Good Article'
+
+    @patch('utils.retry.time.sleep')
+    @patch('utils.rss.feedparser.parse')
+    def test_parse_feed_retries_on_503_then_returns_empty_on_exhaustion(self, mock_feedparser, mock_sleep):
+        """Feed returning 503 after all retries is treated as unavailable; parse_feed returns empty list."""
+        bad_feed = Mock()
+        bad_feed.status = 503
+        bad_feed.feed = Mock()
+        bad_feed.feed.get = lambda key, default=None: default
+        bad_feed.entries = []
+        mock_feedparser.return_value = bad_feed
+
+        parser = RSSFeedParser(exclude_urls="")
+        articles = parser.parse_feed('https://example.com/unavailable.xml')
+
+        assert articles == []
+        assert mock_feedparser.call_count == 4  # initial + 3 retries
+
+
 if __name__ == "__main__":
     # If run directly, execute the integration test
     test_rss_integration()

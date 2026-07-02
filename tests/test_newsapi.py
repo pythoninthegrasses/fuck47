@@ -11,8 +11,9 @@ from unittest.mock import Mock, patch
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import requests
 from utils.db import ArticleDB
-from utils.newsapi import parse_articles
+from utils.newsapi import fetch_and_store_articles, parse_articles
 
 
 @pytest.fixture
@@ -410,6 +411,74 @@ def test_newsapi_parse_integration():
 
     except Exception as e:
         pytest.fail(f"Integration test failed: {e}")
+
+
+class TestFetchAndStoreArticlesRetry:
+    """Test retry and graceful degradation in fetch_and_store_articles."""
+
+    @patch('utils.retry.time.sleep')
+    @patch('utils.newsapi.parse_articles')
+    @patch('utils.newsapi.SESSION')
+    @patch('utils.newsapi.CATEGORIES', ['cat1', 'cat2'])
+    def test_skips_category_with_persistent_503_continues_to_next(self, mock_session, mock_parse, mock_sleep):
+        """Category returning 503 after all retries is skipped; pipeline returns articles from other categories."""
+        mock_article = {
+            'url': 'https://example.com/cat2-article',
+            'title': 'Cat2 Article',
+            'source': 'Test Source',
+            'category': 'cat2',
+            'published_at': '2025-01-01 10:00',
+            'description': 'Test description',
+            'author': 'Test Author',
+        }
+        mock_parse.return_value = [mock_article]
+
+        def session_get_side_effect(url):
+            if 'category=cat1' in url:
+                return Mock(status_code=503)
+            resp = Mock(status_code=200)
+            resp.json.return_value = {'status': 'ok', 'articles': []}
+            return resp
+
+        mock_session.get.side_effect = session_get_side_effect
+        mock_db = Mock()
+        mock_db.insert_article.return_value = True
+
+        articles = fetch_and_store_articles(mock_db)
+        assert len(articles) == 1
+        assert articles[0]['category'] == 'cat2'
+
+    @patch('utils.retry.time.sleep')
+    @patch('utils.newsapi.parse_articles')
+    @patch('utils.newsapi.SESSION')
+    @patch('utils.newsapi.CATEGORIES', ['cat1', 'cat2'])
+    def test_skips_category_on_connection_error_continues_to_next(self, mock_session, mock_parse, mock_sleep):
+        """Category raising ConnectionError after all retries is skipped; pipeline continues to remaining categories."""
+        mock_article = {
+            'url': 'https://example.com/cat2-article',
+            'title': 'Cat2 Article',
+            'source': 'Test Source',
+            'category': 'cat2',
+            'published_at': '2025-01-01 10:00',
+            'description': 'Test description',
+            'author': 'Test Author',
+        }
+        mock_parse.return_value = [mock_article]
+
+        def session_get_side_effect(url):
+            if 'category=cat1' in url:
+                raise requests.ConnectionError("refused")
+            resp = Mock(status_code=200)
+            resp.json.return_value = {'status': 'ok', 'articles': []}
+            return resp
+
+        mock_session.get.side_effect = session_get_side_effect
+        mock_db = Mock()
+        mock_db.insert_article.return_value = True
+
+        articles = fetch_and_store_articles(mock_db)
+        assert len(articles) == 1
+        assert articles[0]['category'] == 'cat2'
 
 
 if __name__ == "__main__":

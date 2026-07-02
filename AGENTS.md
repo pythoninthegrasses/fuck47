@@ -33,6 +33,8 @@ Articles are stored in a persistent DuckDB database (`utils/db.py`), keyed by `u
 
 See [docs/ai.md](docs/ai.md) for the LLM sentiment judge that gates which DJT-related articles are considered negative enough to display.
 
+`utils/retry.py` provides `http_request_with_retry` and `feed_with_retry` — use these instead of bare `requests.get` or `feedparser.parse` calls so transient failures (429, 5xx, `ConnectionError`) are retried with exponential backoff before a source is skipped.
+
 Each run also archives a timestamped Parquet snapshot of both stores under `archive/<store>/YYYY-MM-DD/YYYY-MM-DDTHHMM.parquet` (`ArticleDB.archive_snapshot`, wired in `main.py`) — a persistent, git-committed history of what was fetched/published over time, since the live `.duckdb`/`.parquet` files are ephemeral and gitignored. Query the whole archive with `read_parquet('archive/**/*.parquet')`. `utils/render.py` (run via `uv run python -m utils.render`) turns the `filtered_articles` archive into a static htmx-driven history view at `app/archive/`. See backlog task-011 for the design rationale.
 
 ### Making Changes
