@@ -5,7 +5,7 @@ authors = [
     { name = "pythoninthegrass", email = "4097471+pythoninthegrass@users.noreply.github.com" }
 ]
 
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14"
 
 dependencies = [
     "duckdb>=1.1.0,<2",
@@ -61,7 +61,7 @@ DEP002 = [
 ]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.14"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -138,8 +138,8 @@ exclude = [
     "venv",
 ]
 
-# Assume Python 3.12
-target-version = "py312"
+# Assume Python 3.14
+target-version = "py314"
 
 [tool.ruff.format]
 # Use spaces instead of tabs
