@@ -12,6 +12,8 @@ from config import (
     EXCLUDE_URLS,
     NEWS_API_KEY as API_KEY,
     PAGE_SIZE,
+    RATE_LIMIT_INTERVAL_SEC,
+    RATE_LIMIT_REQUESTS,
     TOP_HEADLINES,
     TTL,
 )
@@ -19,11 +21,14 @@ from datetime import datetime, timedelta
 from dateutil import parser
 from eliot import log_message
 from urllib.parse import urlencode
+from utils.ratelimit import RateLimiter
 from utils.retry import http_request_with_retry
 
 # Initialize session
 SESSION = requests.Session()
 SESSION.headers.update({'Authorization': API_KEY})
+
+RATE_LIMITER = RateLimiter(max_requests=RATE_LIMIT_REQUESTS, interval_sec=RATE_LIMIT_INTERVAL_SEC)
 
 
 # Cache for legitimate news sources
@@ -41,6 +46,7 @@ def fetch_legitimate_sources():
     query_params = {'apiKey': API_KEY, 'language': 'en', 'country': 'us'}
 
     try:
+        RATE_LIMITER.acquire()
         response = SESSION.get(sources_url, params=query_params)
         if response.status_code == 200:
             data = response.json()
@@ -76,6 +82,7 @@ def fetch_and_store_articles(article_db, page=1):
         url = TOP_HEADLINES + '?' + urlencode(query_params)
 
         try:
+            RATE_LIMITER.acquire()
             response = http_request_with_retry(lambda: SESSION.get(url))
             print(f"API Response for {category}: {response.status_code}")
 

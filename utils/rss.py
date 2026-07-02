@@ -1,9 +1,12 @@
 #!/usr/bin/env python
 
 import feedparser
-from config import EXCLUDE_URLS, RSS_FEEDS
+from config import EXCLUDE_URLS, RATE_LIMIT_INTERVAL_SEC, RATE_LIMIT_REQUESTS, RSS_FEEDS
 from datetime import datetime
+from utils.ratelimit import RateLimiter
 from utils.retry import feed_with_retry
+
+RATE_LIMITER = RateLimiter(max_requests=RATE_LIMIT_REQUESTS, interval_sec=RATE_LIMIT_INTERVAL_SEC)
 
 
 class RSSFeedParser:
@@ -81,6 +84,7 @@ class RSSFeedParser:
             print(f"Fetching RSS feed: {rss_url}")
 
             # Use feedparser to parse the RSS feed
+            RATE_LIMITER.acquire()
             feed = feed_with_retry(lambda: feedparser.parse(rss_url))
 
             # Check if feed was successfully parsed

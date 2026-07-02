@@ -452,6 +452,58 @@ class TestFetchAndStoreArticlesRetry:
     @patch('utils.newsapi.parse_articles')
     @patch('utils.newsapi.SESSION')
     @patch('utils.newsapi.CATEGORIES', ['cat1', 'cat2'])
+    def test_skips_category_with_persistent_429_continues_to_next(self, mock_session, mock_parse, mock_sleep):
+        """Category returning 429 (rate-limited) after all retries is skipped; pipeline continues to next category."""
+        mock_article = {
+            'url': 'https://example.com/cat2-article',
+            'title': 'Cat2 Article',
+            'source': 'Test Source',
+            'category': 'cat2',
+            'published_at': '2025-01-01 10:00',
+            'description': 'Test description',
+            'author': 'Test Author',
+        }
+        mock_parse.return_value = [mock_article]
+
+        def session_get_side_effect(url):
+            if 'category=cat1' in url:
+                return Mock(status_code=429)
+            resp = Mock(status_code=200)
+            resp.json.return_value = {'status': 'ok', 'articles': []}
+            return resp
+
+        mock_session.get.side_effect = session_get_side_effect
+        mock_db = Mock()
+        mock_db.insert_article.return_value = True
+
+        articles = fetch_and_store_articles(mock_db)
+        assert len(articles) == 1
+        assert articles[0]['category'] == 'cat2'
+
+    @patch('utils.retry.time.sleep')
+    @patch('utils.newsapi.RATE_LIMITER')
+    @patch('utils.newsapi.parse_articles')
+    @patch('utils.newsapi.SESSION')
+    @patch('utils.newsapi.CATEGORIES', ['cat1', 'cat2'])
+    def test_fetch_and_store_articles_acquires_rate_limiter_per_category(
+        self, mock_session, mock_parse, mock_rate_limiter, mock_sleep
+    ):
+        """fetch_and_store_articles acquires the rate limiter once per category before requesting."""
+        mock_parse.return_value = []
+
+        resp = Mock(status_code=200)
+        resp.json.return_value = {'status': 'ok', 'articles': []}
+        mock_session.get.return_value = resp
+        mock_db = Mock()
+
+        fetch_and_store_articles(mock_db)
+
+        assert mock_rate_limiter.acquire.call_count == 2
+
+    @patch('utils.retry.time.sleep')
+    @patch('utils.newsapi.parse_articles')
+    @patch('utils.newsapi.SESSION')
+    @patch('utils.newsapi.CATEGORIES', ['cat1', 'cat2'])
     def test_skips_category_on_connection_error_continues_to_next(self, mock_session, mock_parse, mock_sleep):
         """Category raising ConnectionError after all retries is skipped; pipeline continues to remaining categories."""
         mock_article = {

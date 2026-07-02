@@ -233,6 +233,18 @@ class TestRSSFeedParser:
         assert articles[0]['title'] == 'Test RSS Article Title'
         assert articles[0]['source'] == 'Test RSS Feed'
 
+    @patch('utils.rss.RATE_LIMITER')
+    @patch('utils.rss.feedparser.parse')
+    def test_parse_feed_acquires_rate_limiter(self, mock_feedparser, mock_rate_limiter, mock_feedparser_feed, mock_feed_entry):
+        """parse_feed acquires the rate limiter before parsing each feed."""
+        mock_feedparser_feed.entries = [mock_feed_entry]
+        mock_feedparser.return_value = mock_feedparser_feed
+
+        parser = RSSFeedParser(exclude_urls="")
+        parser.parse_feed('https://example.com/feed.xml')
+
+        mock_rate_limiter.acquire.assert_called_once()
+
     @patch('utils.rss.feedparser.parse')
     def test_parse_feed_http_error(self, mock_feedparser, mock_feedparser_feed):
         """Test handling of HTTP errors when parsing feed."""

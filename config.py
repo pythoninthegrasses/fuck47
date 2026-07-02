@@ -24,6 +24,10 @@ TTL = config('CACHE_TTL', default=CACHE_TTL, cast=int)
 # Archive configuration (see backlog task-011)
 ARCHIVE_DIR = config('ARCHIVE_DIR', default="archive")
 
+# Rate-limiting configuration (see backlog task-006.03)
+RATE_LIMIT_REQUESTS = config('RATE_LIMIT_REQUESTS', default=100, cast=int)
+RATE_LIMIT_INTERVAL_SEC = config('RATE_LIMIT_INTERVAL_SEC', default=3600, cast=int)
+
 # Categories for news fetching
 CATEGORIES = (
     'business',
