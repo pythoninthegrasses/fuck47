@@ -223,7 +223,7 @@ class TestMainE2E:
             with pytest.raises(Exception):
                 main()
 
-    def test_main_cache_cleanup(self, temp_articles_db):
+    def test_main_cache_cleanup(self, temp_articles_db, tmp_path):
         """Test that main() properly clears old articles."""
         article_db, temp_path = temp_articles_db
 
@@ -231,6 +231,7 @@ class TestMainE2E:
             patch('main.fetch_rss_articles') as mock_rss,
             patch('main.fetch_and_store_articles') as mock_newsapi,
             patch('main.create_article_db') as mock_create_db,
+            patch('main.ARCHIVE_DIR', str(tmp_path / 'archive')),
             patch('main.CACHE_HOURS', 1),  # Short cache time for testing
             patch('main.DJT_FILTER_ENABLED', False),
         ):
@@ -333,7 +334,7 @@ class TestMainIntegration:
         assert 'Trump' in filtered_articles[0]['title']
         assert 'djt_relevance_score' in filtered_articles[0]
 
-    def test_main_output_messages(self, temp_articles_db, temp_filtered_db):
+    def test_main_output_messages(self, temp_articles_db, temp_filtered_db, tmp_path):
         """Test that main() produces expected output messages."""
         article_db, temp_path = temp_articles_db
         filtered_db, filtered_path = temp_filtered_db
@@ -343,6 +344,7 @@ class TestMainIntegration:
             patch('main.fetch_and_store_articles') as mock_newsapi,
             patch('main.fetch_rss_articles') as mock_rss,
             patch('main.create_article_db') as mock_create_db,
+            patch('main.ARCHIVE_DIR', str(tmp_path / 'archive')),
             patch('main.CACHE_HOURS', 24),
             patch('main.DJT_FILTER_ENABLED', True),
             patch('main.DJT_FILTER_MIN_SCORE', 1.0),
@@ -396,7 +398,9 @@ class TestMainSentimentGate:
         }
 
     @patch('main.score_articles')
-    def test_negative_and_positive_articles_split_at_threshold(self, mock_score_articles, temp_articles_db, temp_filtered_db):
+    def test_negative_and_positive_articles_split_at_threshold(
+        self, mock_score_articles, temp_articles_db, temp_filtered_db, tmp_path
+    ):
         """Articles are included/excluded based on SENTIMENT_MAX_SCORE boundary (<=)."""
         article_db, temp_path = temp_articles_db
         filtered_db, filtered_path = temp_filtered_db
@@ -416,6 +420,7 @@ class TestMainSentimentGate:
             patch('main.fetch_and_store_articles', return_value=[]),
             patch('main.article_db', article_db),
             patch('main.create_article_db', return_value=filtered_db),
+            patch('main.ARCHIVE_DIR', str(tmp_path / 'archive')),
             patch('main.CACHE_HOURS', 24),
             patch('main.DJT_FILTER_ENABLED', True),
             patch('main.DJT_FILTER_MIN_SCORE', 1.0),
@@ -429,7 +434,9 @@ class TestMainSentimentGate:
         assert stored_titles == {'Trump Negative Article', 'Trump Boundary Article'}
 
     @patch('main.score_articles')
-    def test_judge_failure_leaves_filtered_articles_untouched(self, mock_score_articles, temp_articles_db, temp_filtered_db):
+    def test_judge_failure_leaves_filtered_articles_untouched(
+        self, mock_score_articles, temp_articles_db, temp_filtered_db, tmp_path
+    ):
         """When the judge call fails, the filtered articles store is left as-is (not cleared/rewritten)."""
         article_db, temp_path = temp_articles_db
         filtered_db, filtered_path = temp_filtered_db
@@ -448,6 +455,7 @@ class TestMainSentimentGate:
             patch('main.fetch_and_store_articles', return_value=[]),
             patch('main.article_db', article_db),
             patch('main.create_article_db', return_value=filtered_db),
+            patch('main.ARCHIVE_DIR', str(tmp_path / 'archive')),
             patch('main.CACHE_HOURS', 24),
             patch('main.DJT_FILTER_ENABLED', True),
             patch('main.DJT_FILTER_MIN_SCORE', 1.0),
@@ -459,6 +467,80 @@ class TestMainSentimentGate:
         stored = filtered_db.get_all_articles()
         assert len(stored) == 1
         assert stored[0]['title'] == 'Previous Run Article'
+
+
+class TestMainArchiving:
+    """Test cases for archive snapshotting during main()."""
+
+    def _djt_article(self, title, url, minutes_ago=0):
+        published_at = (datetime.now() - timedelta(minutes=minutes_ago)).strftime('%Y-%m-%d %H:%M')
+        return {
+            'title': title,
+            'url': url,
+            'source': 'News Source',
+            'category': 'politics',
+            'published_at': published_at,
+            'description': 'Trump-related coverage',
+            'author': 'Reporter',
+        }
+
+    @patch('main.score_articles')
+    def test_main_archives_both_stores_under_same_run_at(self, mock_score_articles, temp_articles_db, temp_filtered_db, tmp_path):
+        """A single run() writes one snapshot for the pre-filter store and one for the filtered store."""
+        article_db, temp_path = temp_articles_db
+        filtered_db, filtered_path = temp_filtered_db
+
+        articles = [self._djt_article('Trump Negative Article', 'https://example.com/neg', minutes_ago=10)]
+        article_db.insert_articles(articles)
+        mock_score_articles.return_value = {0: -0.5}
+
+        archive_dir = tmp_path / 'archive'
+
+        with (
+            patch('main.fetch_rss_articles', return_value=[]),
+            patch('main.fetch_and_store_articles', return_value=[]),
+            patch('main.article_db', article_db),
+            patch('main.create_article_db', return_value=filtered_db),
+            patch('main.ARCHIVE_DIR', str(archive_dir)),
+            patch('main.CACHE_HOURS', 24),
+            patch('main.DJT_FILTER_ENABLED', True),
+            patch('main.DJT_FILTER_MIN_SCORE', 1.0),
+            patch('main.SENTIMENT_ENABLED', True),
+            patch('main.SENTIMENT_MAX_SCORE', 0.0),
+        ):
+            main()
+
+        articles_store = Path(article_db.db_path).stem
+        filtered_store = Path(filtered_db.db_path).stem
+        assert list((archive_dir / articles_store).rglob('*.parquet'))
+        assert list((archive_dir / filtered_store).rglob('*.parquet'))
+
+    def test_main_skips_filtered_archive_when_judge_fails(self, temp_articles_db, temp_filtered_db, tmp_path):
+        """No filtered-store snapshot is written when the sentiment judge fails (nothing new was published)."""
+        article_db, temp_path = temp_articles_db
+        filtered_db, filtered_path = temp_filtered_db
+
+        articles = [self._djt_article('Trump New Article', 'https://example.com/new', minutes_ago=10)]
+        article_db.insert_articles(articles)
+
+        archive_dir = tmp_path / 'archive'
+
+        with (
+            patch('main.fetch_rss_articles', return_value=[]),
+            patch('main.fetch_and_store_articles', return_value=[]),
+            patch('main.article_db', article_db),
+            patch('main.create_article_db', return_value=filtered_db),
+            patch('main.ARCHIVE_DIR', str(archive_dir)),
+            patch('main.CACHE_HOURS', 24),
+            patch('main.DJT_FILTER_ENABLED', True),
+            patch('main.DJT_FILTER_MIN_SCORE', 1.0),
+            patch('main.SENTIMENT_ENABLED', True),
+            patch('main.score_articles', side_effect=SentimentJudgeError("simulated judge failure")),
+        ):
+            main()
+
+        filtered_store = Path(filtered_db.db_path).stem
+        assert not (archive_dir / filtered_store).exists()
 
 
 class TestMainErrorHandling:

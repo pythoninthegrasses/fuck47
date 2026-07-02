@@ -3,6 +3,7 @@
 import requests_cache
 import sys
 from config import (
+    ARCHIVE_DIR,
     CACHE_HOURS,
     CACHE_SESSION,
     DJT_FILTER_ENABLED,
@@ -11,6 +12,7 @@ from config import (
     SENTIMENT_MAX_SCORE,
     TTL,
 )
+from datetime import datetime
 from eliot import to_file
 from utils.db import create_article_db
 from utils.filter import DJTNewsFilter
@@ -28,6 +30,7 @@ article_db = create_article_db('articles.duckdb')
 
 def main():
     """Fetch and store articles from NewsAPI and RSS feeds."""
+    run_at = datetime.now()
     article_db.clear_old_articles(hours=CACHE_HOURS)
 
     # Fetch and store articles from NewsAPI
@@ -72,10 +75,12 @@ def main():
             filtered_db.clear_all_articles()
             filtered_db.insert_articles(negative_articles)
             filtered_db.sort_and_reindex_articles()
+            filtered_db.archive_snapshot(ARCHIVE_DIR, run_at)
             print(f"Stored {len(negative_articles)} articles in filtered articles store")
 
     # Sort and reindex articles by published_at (desc) then source (asc)
     article_db.sort_and_reindex_articles()
+    article_db.archive_snapshot(ARCHIVE_DIR, run_at)
 
 
 if __name__ == "__main__":

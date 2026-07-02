@@ -21,6 +21,9 @@ CACHE_HOURS = config('CACHE_HOURS', default=8, cast=int)
 CACHE_TTL = CACHE_HOURS * 60 * 60  # Convert hours to seconds
 TTL = config('CACHE_TTL', default=CACHE_TTL, cast=int)
 
+# Archive configuration (see backlog task-011)
+ARCHIVE_DIR = config('ARCHIVE_DIR', default="archive")
+
 # Categories for news fetching
 CATEGORIES = (
     'business',
