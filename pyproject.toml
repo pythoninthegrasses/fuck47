@@ -42,6 +42,9 @@ test = [
     "pytest-xdist<4.0.0,>=3.6.1",
 ]
 
+[tool.uv]
+constraint-dependencies = ["orjson>=3.11.0"]
+
 [tool.deptry]
 # DEP003: transitive deps
 ignore = [
