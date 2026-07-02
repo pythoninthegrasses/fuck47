@@ -17,6 +17,14 @@ from utils.filter import DJTNewsFilter
 from utils.sentiment import SentimentJudgeError
 
 
+@pytest.fixture(autouse=True)
+def stub_render_index(monkeypatch):
+    """Keep main() tests from rewriting the real app/index.html."""
+    mock = Mock(return_value=0)
+    monkeypatch.setattr('main.render_index', mock)
+    return mock
+
+
 @pytest.fixture
 def temp_articles_db():
     """Fixture providing a temporary articles database for testing."""
@@ -627,3 +635,22 @@ if __name__ == "__main__":
     # If run directly, execute the integration test
     test_main_e2e_integration()
     print("All tests would pass if run with pytest")
+
+
+class TestMainRendersIndex:
+    def test_main_injects_articles_into_index(self, stub_render_index):
+        """main() should refresh app/index.html from the filtered store at the end of a run."""
+        with (
+            patch('main.fetch_rss_articles') as mock_rss,
+            patch('main.fetch_and_store_articles') as mock_newsapi,
+            patch('main.article_db') as mock_db,
+            patch('main.CACHE_HOURS', 24),
+            patch('main.DJT_FILTER_ENABLED', False),
+        ):
+            mock_newsapi.return_value = []
+            mock_rss.return_value = []
+            mock_db.insert_articles.return_value = 0
+
+            main()
+
+            stub_render_index.assert_called_once_with()

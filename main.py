@@ -17,6 +17,7 @@ from eliot import to_file
 from utils.db import create_article_db
 from utils.filter import DJTNewsFilter
 from utils.newsapi import fetch_and_store_articles
+from utils.render import render_index
 from utils.rss import fetch_rss_articles
 from utils.sentiment import SentimentJudgeError, score_articles
 
@@ -81,6 +82,10 @@ def main():
     # Sort and reindex articles by published_at (desc) then source (asc)
     article_db.sort_and_reindex_articles()
     article_db.archive_snapshot(ARCHIVE_DIR, run_at)
+
+    # Refresh the static index page from the filtered store; no-op if the store is absent
+    injected = render_index()
+    print(f"Injected {injected} articles into app/index.html")
 
 
 if __name__ == "__main__":
