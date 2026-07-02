@@ -53,7 +53,11 @@ The frontend (`app/index.html`) renders each article as a full-viewport pop-art 
 
 ### Deployment
 
-Changes are automatically deployed via GitHub Pages when pushed to the main branch.
+Changes are automatically deployed via GitHub Pages when pushed to the main
+branch (`.github/workflows/static.yml`). The aggregation pipeline is rebuilt
+every 8 hours by `.github/workflows/news-refresh.yml` (cron `0 */8 * * *`,
+plus `workflow_dispatch` for manual runs). See [docs/ci.md](docs/ci.md) for
+full workflow details.
 
 ### Git Workflow
 
