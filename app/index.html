@@ -26,10 +26,10 @@
   :root {
     /* The Print-Shop Palette (DESIGN.md) */
     --ink: #221f1a;
-    --ground: #f4efe3;
-    --stock: #efddb7;
+    --ground: #dfe2dd;
+    --stock: #f1e6c9;
     --tan: #e8b98a;
-    --olive: #8a7749;
+    --olive: #48566d;
     --orchid: #ce769e;
 
     --masthead: 'Anton', 'Arial Narrow', Impact, sans-serif;
@@ -92,7 +92,7 @@
      sized from the story's own geometry so it overhangs equally on both sides */
   .plate-olive {
     left: calc(clamp(16px, 3vw, 48px) - 28px);
-    bottom: 9dvh;
+    bottom: calc(9dvh + 15vh);
     width: calc(min(50vw, 64ch) + 56px);
     height: 16dvh;
     transform: translate(0, 6px);
@@ -179,6 +179,7 @@
     width: min(50vw, 64ch);
     background: var(--stock);
     padding: 16px 20px;
+    transform: translateY(-15vh);
   }
   .story .desc {
     font-size: 1rem;
@@ -347,6 +348,7 @@
     .story {
       width: auto;
       margin-top: 20px;
+      transform: none;
     }
 
     /* keep the primary controls in the thumb zone regardless of scroll */
