@@ -461,3 +461,6 @@ public/build
 
 # playwright mcp screenshots/artifacts
 .playwright-mcp/
+
+# impeccable local config
+.impeccable/config.local.json
