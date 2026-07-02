@@ -1,17 +1,17 @@
 ---
 id: TASK-007.02
 title: Set up CI pipeline
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-01 19:02'
-updated_date: '2026-07-02 04:20'
+updated_date: '2026-07-02 20:20'
 labels: []
 dependencies: []
 references:
   - TODO.md
 parent_task_id: TASK-007
 priority: high
-ordinal: 13000
+ordinal: 2000
 ---
 
 ## Description

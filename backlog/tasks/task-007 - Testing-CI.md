@@ -1,16 +1,16 @@
 ---
 id: TASK-007
 title: Testing & CI
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-01 18:58'
-updated_date: '2026-07-02 04:20'
+updated_date: '2026-07-02 20:20'
 labels: []
 dependencies: []
 references:
   - TODO.md
 priority: high
-ordinal: 12000
+ordinal: 1000
 ---
 
 ## Description
