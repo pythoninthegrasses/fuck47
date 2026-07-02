@@ -1,9 +1,10 @@
 ---
 id: TASK-005.03
 title: Smooth transitions between multiple articles
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-01 19:02'
+updated_date: '2026-07-02 18:35'
 labels: []
 dependencies:
   - TASK-005.01
@@ -25,6 +26,18 @@ Per PRD FR5, when multiple negative articles are available, display them with sm
 - [ ] #1 Switching between articles in the speech bubble uses a CSS transition/animation rather than an instant swap
 - [ ] #2 Transition verified manually in a browser
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Superseded by the pop-art poster pivot: DESIGN.md commits to restrained motion — poster rotation is a deliberate hard cut ("flipping through a stack of flyers"), so a CSS transition between articles would contradict the shipped design. Auto-advance (12s), prev/next buttons, and arrow keys handle multi-article display; prefers-reduced-motion disables auto-advance. Closed without implementing the transition described in the ACs.
+<!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Closed as superseded, not implemented as specified. Multi-article display shipped (rotation + controls), but transitions are intentionally instant hard cuts per DESIGN.md's restrained-motion doctrine — the AC's "CSS transition rather than an instant swap" is the opposite of the chosen design. ACs/DoD intentionally left unchecked.
+<!-- SECTION:FINAL_SUMMARY:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->
