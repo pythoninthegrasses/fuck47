@@ -4,48 +4,520 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>FuckFortySeven</title>
+  <meta name="description" content="All bad news, all the time. Negative DJT coverage, silkscreened daily.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23221f1a'/%3E%3Ctext x='8' y='12.5' text-anchor='middle' font-family='Arial Narrow, sans-serif' font-weight='bold' font-size='11' fill='%23f4efe3'%3E47%3C/text%3E%3C/svg%3E">
+  <link rel="preload" href="fonts/anton.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="fonts/special-elite.woff2" as="font" type="font/woff2" crossorigin>
+  <script defer src="https://unpkg.com/alpinejs@3"></script>
   <style>
+  @font-face {
+    font-family: 'Anton';
+    src: url('fonts/anton.woff2') format('woff2');
+    font-weight: 400;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'Special Elite';
+    src: url('fonts/special-elite.woff2') format('woff2');
+    font-weight: 400;
+    font-display: swap;
+  }
+
+  :root {
+    /* The Print-Shop Palette (DESIGN.md) */
+    --ink: #221f1a;
+    --ground: #f4efe3;
+    --stock: #efddb7;
+    --tan: #e8b98a;
+    --olive: #8a7749;
+    --orchid: #ce769e;
+
+    --masthead: 'Anton', 'Arial Narrow', Impact, sans-serif;
+    --typewriter: 'Special Elite', 'Courier New', monospace;
+
+    /* z scale: plates < portrait < halftone < type < controls */
+    --z-plate: 1;
+    --z-portrait: 2;
+    --z-halftone: 3;
+    --z-type: 4;
+    --z-controls: 5;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+
   body {
-    margin: 0;
-    padding: 0;
-    min-height: 100vh;
-    font-family: Arial, sans-serif;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--typewriter);
+    font-size: 1rem;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+
+  [x-cloak] { display: none !important; }
+
+  .poster {
+    position: relative;
+    height: 100dvh;
+    width: 100vw;
+    overflow: hidden;
+  }
+
+  /* ---- image layer: misregistered plates under a duotone black plate ---- */
+
+  .portrait-frame {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 55vw;
+    height: 100dvh;
+    z-index: var(--z-portrait);
+  }
+
+  .plate {
+    position: absolute;
+    z-index: var(--z-plate);
+  }
+  /* tan plate: deliberately off-register from the portrait above it */
+  .plate-tan {
+    top: 0;
+    right: 10px;
+    width: 55vw;
+    height: calc(100dvh - 12px);
+    transform: translate(-12px, 12px);
+    background: var(--tan);
+  }
+  /* olive plate: low horizontal band behind the description block,
+     sized from the story's own geometry so it overhangs equally on both sides */
+  .plate-olive {
+    left: calc(clamp(16px, 3vw, 48px) - 28px);
+    bottom: 9dvh;
+    width: calc(min(50vw, 64ch) + 56px);
+    height: 16dvh;
+    transform: translate(0, 6px);
+    background: var(--olive);
+    font-size: 1rem; /* keeps its ch unit in step with the story's */
+    z-index: var(--z-halftone); /* prints over the portrait edge, under the type */
+  }
+
+  .portrait-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    filter: url(#silkscreen);
+  }
+
+  /* halftone screen over the black plate */
+  .halftone {
+    position: absolute;
+    inset: 0;
+    z-index: var(--z-halftone);
+    background-image: radial-gradient(circle, rgba(34, 31, 26, 0.32) 1px, transparent 1.4px);
+    background-size: 5px 5px;
+    pointer-events: none;
+  }
+
+  /* ---- type layer: paste-up strips over the print ---- */
+
+  /* left column flows top-to-bottom so variable-length titles can never collide */
+  .type-col {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 52vw;
+    z-index: var(--z-type);
+    display: flex;
+    flex-direction: column;
+    padding: clamp(16px, 3vh, 32px) 0 clamp(12px, 2vh, 24px) clamp(16px, 3vw, 48px);
+    pointer-events: none;
+  }
+  .type-col a, .type-col button { pointer-events: auto; }
+
+  .masthead .site {
+    font-family: var(--masthead);
+    font-size: clamp(1.25rem, 2.5vw, 1.75rem);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    line-height: 1;
+  }
+  .masthead .tagline {
+    font-size: 0.8125rem;
+    margin-top: 6px;
+    letter-spacing: 0.01em;
+  }
+
+  .headline-block {
+    margin-top: auto;
+    margin-bottom: auto;
+    padding: 4vh 0;
+    width: 56vw;
+  }
+  h1.headline { max-width: 12em; }
+  h1.headline {
+    font-family: var(--masthead);
+    font-weight: 400;
+    line-height: 1.28;
+    text-transform: uppercase;
+    letter-spacing: 0.005em;
+    text-wrap: balance;
+  }
+  /* size steps down as the wire headline gets longer; set via data-len from Alpine */
+  h1.headline { font-size: clamp(2.25rem, 5vw + 0.5rem, 5.25rem); }
+  .headline-block[data-len="long"] h1.headline { font-size: clamp(1.75rem, 3.4vw + 0.4rem, 3.5rem); }
+  .headline-block[data-len="xlong"] h1.headline { font-size: clamp(1.4rem, 2.6vw + 0.3rem, 2.625rem); }
+  /* each line is a strip of paper glued over the print */
+  h1.headline span {
+    background: var(--ground);
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+    padding: 0.09em 0.18em;
+  }
+
+  .story {
+    width: min(50vw, 64ch);
+    background: var(--stock);
+    padding: 16px 20px;
+  }
+  .story .desc {
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .story .byline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    align-items: baseline;
+    margin-top: 12px;
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .story .byline a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    padding: 8px 0;
+  }
+  .story .byline a:hover { background: var(--orchid); }
+  .story .byline a:focus-visible,
+  .controls a:focus-visible,
+  .controls button:focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  /* issue stamp: one of the two permitted orchid strokes */
+  .stamp {
+    position: absolute;
+    top: clamp(16px, 3vh, 32px);
+    right: clamp(16px, 3vw, 48px);
+    z-index: var(--z-controls);
+    background: var(--orchid);
+    color: var(--ink);
+    font-size: 0.8125rem;
+    letter-spacing: 0.08em;
+    padding: 6px 10px;
+    transform: rotate(2deg);
+  }
+
+  .controls {
+    position: absolute;
+    right: clamp(16px, 3vw, 48px);
+    bottom: clamp(16px, 3vh, 32px);
+    z-index: var(--z-controls);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .controls button {
+    font-family: var(--masthead);
+    font-size: clamp(1.25rem, 2vw, 1.75rem);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    background: var(--ink);
+    color: var(--ground);
+    border: none;
+    padding: 10px 22px;
+    cursor: pointer;
+    min-height: 44px;
+  }
+  .controls button:hover { background: var(--olive); }
+  .controls button:active { transform: translate(1px, 1px); }
+
+  .backissues {
+    margin-top: 12px;
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .backissues a {
+    color: var(--ink);
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+    display: inline-block;
+    padding: 12px 0;
+  }
+  .backissues a:hover { background: var(--tan); }
+
+  .credit {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: var(--z-type);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    opacity: 0.75;
+    writing-mode: vertical-rl;
+  }
+
+  /* ---- empty state ---- */
+  .empty .desc { margin-top: 8px; }
+
+  /* ---- no-JS fallback ---- */
+  noscript ul {
+    position: relative;
+    z-index: var(--z-type);
+    display: block;
+    padding: 20vh 8vw;
+    list-style: square;
+    font-size: 1.125rem;
+    line-height: 2;
+  }
+  noscript a { color: var(--ink); }
+
+  /* ---- mobile: poster stacks, portrait keeps the majority ---- */
+  @media (max-width: 899px) {
+    body { overflow-y: auto; }
+    .poster { height: auto; min-height: 100dvh; }
+
+    .portrait-frame {
+      position: relative;
+      width: 100vw;
+      height: 58dvh;
+      margin-top: 84px;
+    }
+    .plate-tan {
+      width: 100vw;
+      height: 58dvh;
+      top: 84px;
+      right: 0;
+      transform: translate(-8px, 10px);
+    }
+    .plate-olive { display: none; }
+
+    .type-col {
+      position: static;
+      inset: auto;
+      width: auto;
+      padding: 0 clamp(12px, 4vw, 24px) 24px;
+    }
+
+    /* pin the masthead to the poster top; the flow column starts with the portrait */
+    .masthead {
+      position: absolute;
+      top: clamp(16px, 3vh, 32px);
+      left: clamp(12px, 4vw, 24px);
+      z-index: var(--z-type);
+    }
+
+    /* type-col is static here, so re-anchor its children above the portrait */
+    .headline-block, .story, .controls, .backissues {
+      position: relative;
+      z-index: var(--z-type);
+    }
+
+    .headline-block {
+      margin: -16vh 0 0;
+      padding: 0;
+      width: auto;
+    }
+    h1.headline { font-size: clamp(2rem, 9vw, 3.25rem); }
+    .headline-block[data-len="long"] h1.headline { font-size: clamp(1.5rem, 6.5vw, 2.25rem); }
+    .headline-block[data-len="xlong"] h1.headline { font-size: clamp(1.25rem, 5.5vw, 1.75rem); }
+
+    .story {
+      width: auto;
+      margin-top: 20px;
+    }
+
+    /* keep the primary control in the thumb zone regardless of scroll */
+    .controls {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+    }
+    .backissues { margin: 12px 0 0; }
+    .credit { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .controls button:active { transform: none; }
   }
   </style>
 </head>
-<body>
-  <!-- <h1 style="text-align: center;"><a href="https://fuckfortyseven.org">fuck47</a></h1> -->
+<body x-data="poster" x-cloak>
 
-  <div style="position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center;">
-    <div style="position: relative; max-width: 600px; text-align: center;">
-      <div style="position: relative; margin-bottom: 1em;">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 200" style="width: 100%; height: auto;">
-          <path d="M40 20
-                   L560 20
-                   A20 20 0 0 1 580 40
-                   L580 140
-                   A20 20 0 0 1 560 160
-                   L500 160
-                   L460 190
-                   L480 160
-                   L40 160
-                   A20 20 0 0 1 20 140
-                   L20 40
-                   A20 20 0 0 1 40 20"
-                fill="white"
-                stroke="black"
-                stroke-width="2"/>
-          <foreignObject x="40" y="20" width="520" height="140">
-            <div xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-              <span style="color: black; font-size: 1.8rem;">Future home of the <strong>FuckFortySeven</strong> website. 👷</span>
-            </div>
-          </foreignObject>
-        </svg>
-      </div>
-      <a href="https://www.nytimes.com/interactive/2024/07/11/opinion/editorials/donald-trump-2024-unfit.html" title="Read more at The New York Times" target="_blank">
-        <img src="img/trump.png" alt="Trump" style="width: 450px; height: auto; cursor: pointer;">
-      </a>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <filter id="silkscreen" color-interpolation-filters="sRGB">
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer><!-- push contrast before posterizing -->
+        <feFuncR type="linear" slope="1.4" intercept="-0.18"/>
+        <feFuncG type="linear" slope="1.4" intercept="-0.18"/>
+        <feFuncB type="linear" slope="1.4" intercept="-0.18"/>
+      </feComponentTransfer>
+      <feComponentTransfer><!-- posterize to 5 silkscreen levels -->
+        <feFuncR type="discrete" tableValues="0 0.25 0.5 0.75 1"/>
+        <feFuncG type="discrete" tableValues="0 0.25 0.5 0.75 1"/>
+        <feFuncB type="discrete" tableValues="0 0.25 0.5 0.75 1"/>
+      </feComponentTransfer>
+      <feComponentTransfer><!-- duotone: shadows to Xerox Black, lights to Silkscreen Ground -->
+        <feFuncR type="table" tableValues="0.133 0.957"/>
+        <feFuncG type="table" tableValues="0.122 0.937"/>
+        <feFuncB type="table" tableValues="0.102 0.890"/>
+      </feComponentTransfer>
+    </filter>
+  </svg>
+
+  <!-- ARTICLES:BEGIN -->
+    <script type="application/json" id="poster-articles">[{"url": "https://www.nytimes.com/2026/07/02/us/politics/tucker-carlson-third-party.html", "title": "Tucker Carlson, Who Broke With Trump, Plans to ‘Help Build a Third Party’", "description": "The influential conservative commentator’s relationship with the president and the G.O.P. fractured over the war with Iran. Now, he says he is charting a new course.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-02 15:39"}, {"url": "https://www.nytimes.com/2026/07/02/business/energy-environment/electric-grid-data-centers-pjm.html", "title": "Energy Department Orders Data Centers to Tap Backup Power", "description": "As triple-digit heat engulfs much of the United States, the Trump administration wants grid managers to require the use of backup power that often goes unused.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-02 15:24"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/justice-trump-suit-gun-ban-virginia-california.html", "title": "Trump Administration Sues Over New Gun Bans in Virginia and California", "description": "The Justice Department is challenging a ban on semiautomatic assault rifles in Virginia and a ban on Glocks and Glock-style pistols in California, arguing they are unlawful under the Second Amendment.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-02 15:16"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/trump-north-dakota-roosevelt-library.html", "title": "Trump Finds His Presidential Alter Ego, the ‘He-Man’ Teddy Roosevelt", "description": "President Trump flew into town on the new Air Force One and spent time touring the library dedicated to Theodore Roosevelt, whom he called “a great he-man.”", "source": "NYT > U.S. > Politics", "published_at": "2026-07-02 01:37"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/trump-ymca-anthem-village-people.html", "title": "How Trump Made ‘Y.M.C.A.’ His Anthem, Despite the Village People and Victor Willis’s Mixed Feelings", "description": "On social media, he said the Village People’s lead singer, Victor Willis, was with him “right from the beginning.” But the president has a more complicated history with the group.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-02 00:30"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/trump-money-conflicts-presidency.html", "title": "Does Trump Worry About Conflicts of Interest? ‘I Found Out That Nobody Cared.’", "description": "American presidents have generally tried to avoid appearing to profit from the office. President Trump has chosen a different path.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-01 23:56"}, {"url": "https://www.nytimes.com/2026/07/01/us/kratom-trump-administration.html", "title": "Trump Administration Delivers Lucrative Win for Its Kratom Allies", "description": "In moving to ban a potent synthetic version of kratom, the president’s team paved the way for more sales for makers of rival botanic supplements, who had aggressively lobbied for the change.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-01 23:33"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/trump-finances-government-conflicts.html", "title": "The Key Ways Trump’s Financial Interests Intersect With Government Policy", "description": "President Trump’s business holdings, which garnered him more than $2 billion last year, create potential conflicts of interest surpassing any predecessor.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-01 23:01"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/judge-trump-postal-service.html", "title": "Judge Blocks Postal Service From Imposing Restrictions on Mail-In Ballots", "description": "The ruling, based on agreements the service made in a 2021 legal settlement, was the second time a judge has blocked new curbs by President Trump on voting by mail.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-01 22:12"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/trump-crypto-memecoin-world-liberty.html", "title": "Crypto Brought Trump a Huge Windfall, Even as Many Investors Lost Big", "description": "President Trump and his family reaped vast financial rewards from a memecoin that generated losses for hundreds of thousands of investors.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-01 20:39"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/minnesota-pardon-sexual-abuser.html", "title": "Minnesota Pardons Sexual Abuser Who Was Set to Be Deported", "description": "Tou Lue Vang has expressed regret for abusing a 10-year-old two decades ago. The Trump administration accused Gov. Tim Walz, a Democrat, of shielding an immigrant who committed a serious crime.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-01 19:13"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/trump-washington-dc-construction.html", "title": "Trump Remakes Washington, D.C., Into a Maze of Fences and Guard Members", "description": "President Trump seems to have turned swaths of the city into either a construction zone or an armed camp as he seeks to prove that he alone can improve it.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-01 17:26"}, {"url": "https://www.nytimes.com/2026/07/01/us/politics/john-brennan-investigations-records.html", "title": "Ex-C.I.A. Chief Asks for Order Forcing Trump Administration to Preserve Records", "description": "Lawyers for John O. Brennan said they want the materials saved in anticipation of bringing a vindictive prosecution motion if charges against Mr. Brennan are ultimately filed.", "source": "NYT > U.S. > Politics", "published_at": "2026-07-01 16:34"}]</script>
+    <noscript><ul id="poster-fallback">
+      <li><a href="https://www.nytimes.com/2026/07/02/us/politics/tucker-carlson-third-party.html">Tucker Carlson, Who Broke With Trump, Plans to ‘Help Build a Third Party’</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/02/business/energy-environment/electric-grid-data-centers-pjm.html">Energy Department Orders Data Centers to Tap Backup Power</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/justice-trump-suit-gun-ban-virginia-california.html">Trump Administration Sues Over New Gun Bans in Virginia and California</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/trump-north-dakota-roosevelt-library.html">Trump Finds His Presidential Alter Ego, the ‘He-Man’ Teddy Roosevelt</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/trump-ymca-anthem-village-people.html">How Trump Made ‘Y.M.C.A.’ His Anthem, Despite the Village People and Victor Willis’s Mixed Feelings</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/trump-money-conflicts-presidency.html">Does Trump Worry About Conflicts of Interest? ‘I Found Out That Nobody Cared.’</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/kratom-trump-administration.html">Trump Administration Delivers Lucrative Win for Its Kratom Allies</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/trump-finances-government-conflicts.html">The Key Ways Trump’s Financial Interests Intersect With Government Policy</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/judge-trump-postal-service.html">Judge Blocks Postal Service From Imposing Restrictions on Mail-In Ballots</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/trump-crypto-memecoin-world-liberty.html">Crypto Brought Trump a Huge Windfall, Even as Many Investors Lost Big</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/minnesota-pardon-sexual-abuser.html">Minnesota Pardons Sexual Abuser Who Was Set to Be Deported</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/trump-washington-dc-construction.html">Trump Remakes Washington, D.C., Into a Maze of Fences and Guard Members</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+      <li><a href="https://www.nytimes.com/2026/07/01/us/politics/john-brennan-investigations-records.html">Ex-C.I.A. Chief Asks for Order Forcing Trump Administration to Preserve Records</a> &mdash; NYT &gt; U.S. &gt; Politics</li>
+    </ul></noscript>
+    <!-- ARTICLES:END -->
+
+  <main class="poster">
+    <div class="plate plate-tan" aria-hidden="true"></div>
+    <div class="plate plate-olive" aria-hidden="true"></div>
+
+    <div class="portrait-frame">
+      <img :src="'img/djt/' + image.file" :alt="image.alt" width="1000" height="1300">
+      <div class="halftone" aria-hidden="true"></div>
     </div>
-  </div>
+
+    <div class="stamp" x-show="articles.length" x-text="'No. ' + (idx + 1) + ' of ' + articles.length"></div>
+
+    <div class="type-col">
+      <header class="masthead">
+        <div class="site">FuckFortySeven</div>
+        <div class="tagline">all bad news, all the time</div>
+      </header>
+
+      <template x-if="current">
+        <div style="display: contents">
+          <div class="headline-block" aria-live="polite" :data-len="lenClass">
+            <h1 class="headline"><span x-text="current.title"></span></h1>
+          </div>
+          <div class="story">
+            <p class="desc" x-text="current.description"></p>
+            <p class="byline">
+              <span x-text="source"></span>
+              <span x-text="date"></span>
+              <a :href="current.url" target="_blank" rel="noopener">Read the story</a>
+            </p>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="!current">
+        <div style="display: contents">
+          <div class="headline-block">
+            <h1 class="headline"><span>No bad news yet.</span></h1>
+          </div>
+          <div class="story empty">
+            <p class="desc">The presses are warming up. Try the back issues below, or come back after the next print run.</p>
+          </div>
+        </div>
+      </template>
+
+      <p class="backissues"><a href="archive/">Back issues &rarr;</a></p>
+    </div>
+
+    <div class="controls" x-show="articles.length > 1">
+      <button type="button" @click="next()">Next &rarr;</button>
+    </div>
+
+    <span class="credit" x-text="'portrait: ' + image.credit"></span>
+  </main>
+
+  <script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('poster', () => ({
+      articles: [],
+      images: [
+        { file: 'loc_official-portrait_nd.webp', credit: 'Library of Congress', alt: 'Official portrait of Donald Trump, silkscreen-treated' },
+        { file: 'nyt_intropic_20240705.webp', credit: 'The New York Times', alt: 'Donald Trump, silkscreen-treated press photo' },
+        { file: 'vox_trump-gestures_20190215.webp', credit: 'Vox', alt: 'Donald Trump gesturing, silkscreen-treated press photo' },
+        { file: 'rs_trump-13-biggest-biz-fails_20160314.webp', credit: 'Rolling Stone', alt: 'Donald Trump, silkscreen-treated press photo' },
+        { file: 'wapo_profit_20260701.webp', credit: 'The Washington Post', alt: 'Donald Trump, silkscreen-treated press photo' },
+        { file: 'fc_every-brand-has-a-cherished-storyline_20170131.webp', credit: 'Fast Company', alt: 'Donald Trump, silkscreen-treated press photo' },
+        { file: 'thinkprogress_trump-broke-80-promises-100-days_20170429.webp', credit: 'ThinkProgress', alt: 'Donald Trump, silkscreen-treated press photo' },
+      ],
+      idx: 0,
+      timer: null,
+
+      init() {
+        try {
+          this.articles = JSON.parse(document.getElementById('poster-articles').textContent);
+        } catch (e) {
+          this.articles = [];
+        }
+        window.addEventListener('keydown', (e) => {
+          if (e.key === 'ArrowRight') this.next();
+          if (e.key === 'ArrowLeft') this.prev();
+        });
+        const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && this.articles.length > 1) {
+          this.timer = setInterval(() => {
+            if (!document.hidden) this.next(false);
+          }, 12000);
+        }
+      },
+
+      get current() { return this.articles[this.idx] || null; },
+      get lenClass() {
+        const n = this.current ? (this.current.title || '').length : 0;
+        if (n > 80) return 'xlong';
+        if (n > 48) return 'long';
+        return null;
+      },
+      get image() { return this.images[this.idx % this.images.length]; },
+      get source() { return (this.current && this.current.source || '').replace(/\s*>.*$/, ''); },
+      get date() {
+        if (!this.current || !this.current.published_at) return '';
+        const d = new Date(this.current.published_at.replace(' ', 'T'));
+        if (isNaN(d)) return this.current.published_at;
+        return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      },
+
+      next(user = true) {
+        if (!this.articles.length) return;
+        this.idx = (this.idx + 1) % this.articles.length;
+        if (user && this.timer) { clearInterval(this.timer); this.timer = null; }
+      },
+      prev() {
+        if (!this.articles.length) return;
+        this.idx = (this.idx - 1 + this.articles.length) % this.articles.length;
+        if (this.timer) { clearInterval(this.timer); this.timer = null; }
+      },
+    }));
+  });
+  </script>
 </body>
 </html>
