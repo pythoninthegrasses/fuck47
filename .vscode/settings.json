@@ -17,7 +17,5 @@
     "*"
   ],
   "debug.inlineValues": "off",
-  "ruff.lint.run": "onType",
-  "ruff.organizeImports": true,
-  "ruff.showNotifications": "onError"
+  "ruff.organizeImports": true
 }
