@@ -1,16 +1,17 @@
 ---
 id: TASK-003.02
 title: Configurable rebuild interval
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-01 19:01'
+updated_date: '2026-07-02 16:15'
 labels: []
 dependencies: []
 documentation:
   - doc-001
 parent_task_id: TASK-003
 priority: medium
-ordinal: 3200
+ordinal: 812.5
 ---
 
 ## Description

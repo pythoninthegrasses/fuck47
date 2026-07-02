@@ -1,16 +1,17 @@
 ---
 id: TASK-003.03
 title: Preserve GitHub Pages compatibility
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-01 19:01'
+updated_date: '2026-07-02 18:31'
 labels: []
 dependencies: []
 documentation:
   - doc-001
 parent_task_id: TASK-003
 priority: high
-ordinal: 3300
+ordinal: 843.75
 ---
 
 ## Description
@@ -22,9 +23,15 @@ Ensure the generated app/index.html and any new build artifacts remain compatibl
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Deployed site continues to serve from app/ via the existing GitHub Pages workflow with no workflow changes required beyond what's necessary for the new build step
-- [ ] #2 Custom domain (CNAME) configuration remains intact after the build step runs
+- [x] #2 Custom domain (CNAME) configuration remains intact after the build step runs
 - [ ] #3 A manual or CI dry-run of the workflow succeeds after the build step is added
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Partially verified this session: the build step only writes app/index.html (in-place marker swap) and app/archive/ — nothing touches CNAME or Pages settings (AC #2 checked; the custom domain is configured in repository settings, no CNAME file exists in app/). AC #1 and #3 need an actual push/CI run of .github/workflows/static.yml to verify the deployed site, so they stay open. No workflow changes were required: the new assets (fonts, img/djt, archive stub) all live under app/ which the workflow already publishes wholesale.
+<!-- SECTION:NOTES:END -->
 
 ## Definition of Done
 <!-- DOD:BEGIN -->

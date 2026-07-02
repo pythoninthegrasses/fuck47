@@ -1,15 +1,16 @@
 ---
 id: TASK-003
 title: Static Site Generation
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-01 18:58'
+updated_date: '2026-07-02 16:14'
 labels: []
 dependencies: []
 documentation:
   - doc-001
 priority: high
-ordinal: 3000
+ordinal: 500
 ---
 
 ## Description
