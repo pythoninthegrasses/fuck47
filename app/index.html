@@ -91,9 +91,10 @@
   /* olive plate: low horizontal band behind the description block,
      sized from the story's own geometry so it overhangs equally on both sides */
   .plate-olive {
-    left: calc(clamp(16px, 3vw, 48px) - 28px);
+    /* left edge overhangs the centered .story box by 28px, mirroring its centered position */
+    left: calc(clamp(16px, 3vw, 48px) / 2 + 26vw - min(17.5vw, 27ch) - 28px);
     bottom: calc(9dvh + 15vh);
-    width: calc(min(50vw, 64ch) + 56px);
+    width: calc(min(35vw, 54ch) + 56px);
     height: 16dvh;
     transform: translate(0, 6px);
     background: var(--olive);
@@ -152,7 +153,7 @@
     margin-top: auto;
     margin-bottom: auto;
     padding: 4vh 0;
-    width: 56vw;
+    width: min(56vw, 100%);
   }
   h1.headline { max-width: 12em; }
   h1.headline {
@@ -162,6 +163,7 @@
     text-transform: uppercase;
     letter-spacing: 0.005em;
     text-wrap: balance;
+    color: #fff;
   }
   /* size steps down as the wire headline gets longer; set via data-len from Alpine */
   h1.headline { font-size: clamp(2.25rem, 5vw + 0.5rem, 5.25rem); }
@@ -169,14 +171,14 @@
   .headline-block[data-len="xlong"] h1.headline { font-size: clamp(1.4rem, 2.6vw + 0.3rem, 2.625rem); }
   /* each line is a strip of paper glued over the print */
   h1.headline span {
-    background: var(--ground);
+    background: var(--ink);
     box-decoration-break: clone;
     -webkit-box-decoration-break: clone;
     padding: 0.09em 0.18em;
   }
 
   .story {
-    width: min(50vw, 64ch);
+    width: min(50vw, 64ch, 100%);
     background: var(--stock);
     padding: 16px 20px;
     transform: translateY(-15vh);
@@ -366,6 +368,83 @@
   @media (prefers-reduced-motion: reduce) {
     .controls button:active { transform: none; }
   }
+
+  /* ---- desktop: title + description enlarged 30% and centered in the left column ---- */
+  @media (min-width: 900px) {
+    .poster {
+      --story-width: min(35vw, 54ch);
+      --story-overhang: 28px;
+      --story-plate-top-reveal: 24px;
+      --story-plate-bottom-drop: 18px;
+    }
+    .poster[data-desc-len="short"] {
+      --story-plate-top-reveal: 30px;
+    }
+
+    .type-col {
+      width: 45vw;
+      padding-right: clamp(16px, 3vw, 48px);
+    }
+
+    .headline-block,
+    .story {
+      align-self: center;
+    }
+    .headline-block {
+      width: fit-content;
+      max-width: min(46vw, 66ch);
+    }
+    /* narrow the story so its centered box always clears the portrait's tan plate */
+    .story {
+      position: relative;
+      z-index: 0;
+      width: var(--story-width);
+      background: transparent;
+      transform: translateY(-15vh);
+    }
+    .story::before {
+      content: "";
+      position: absolute;
+      top: calc(var(--story-plate-top-reveal) * -1);
+      bottom: calc(var(--story-plate-bottom-drop) * -1);
+      left: calc(var(--story-overhang) * -1);
+      right: calc(var(--story-overhang) * -1);
+      background: var(--olive);
+      z-index: -2;
+      transform: translateY(6px);
+      pointer-events: none;
+    }
+    .story::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: var(--stock);
+      z-index: -1;
+      pointer-events: none;
+    }
+    .story > * {
+      position: relative;
+      z-index: 1;
+    }
+    .headline-block[data-len="long"] + .story {
+      transform: translateY(-11vh);
+    }
+    .headline-block[data-len="xlong"] + .story {
+      transform: translateY(-8vh);
+    }
+    .plate-olive,
+    [data-impeccable-variant="1"] > .v1-plate,
+    [data-impeccable-variant="2"] > .v2-plate,
+    [data-impeccable-variant="3"] > .v3-plate {
+      display: none;
+    }
+
+    h1.headline { font-size: clamp(2.925rem, 6.5vw + 0.65rem, 6.825rem); }
+    .headline-block[data-len="long"] h1.headline { font-size: clamp(2.275rem, 4.42vw + 0.52rem, 4.55rem); }
+    .headline-block[data-len="xlong"] h1.headline { font-size: clamp(1.82rem, 3.38vw + 0.39rem, 3.4125rem); }
+
+    .story .desc { font-size: 1.3rem; }
+  }
   </style>
 </head>
 <body x-data="poster" x-cloak>
@@ -410,9 +489,79 @@
     </ul></noscript>
     <!-- ARTICLES:END -->
 
-  <main class="poster">
+  <main class="poster" :data-desc-len="descLenClass">
     <div class="plate plate-tan" aria-hidden="true"></div>
-    <div class="plate plate-olive" aria-hidden="true"></div>
+    <!-- impeccable-variants-start 04bbcafd -->
+    <div data-impeccable-variants="04bbcafd" data-impeccable-variant-count="3" style="display: contents">
+      <!-- Original -->
+      <div data-impeccable-variant="original">
+        <div class="plate plate-olive" aria-hidden="true"></div>
+      </div>
+      <!-- Variants: insert below this line -->
+      <style data-impeccable-css="04bbcafd">
+        @scope ([data-impeccable-variant="1"]) {
+          :scope > .v1-plate {
+            left: calc(clamp(16px, 3vw, 48px) - var(--p-overhang, 28px));
+            bottom: calc(9dvh + 15vh);
+            width: calc(min(35vw, 54ch) + (var(--p-overhang, 28px) * 2));
+            height: 16dvh;
+            transform: translate(0, 6px);
+            background: var(--olive);
+            font-size: 1rem;
+            z-index: var(--z-halftone);
+          }
+          @media (min-width: 900px) {
+            :scope > .v1-plate {
+                left: calc((45vw - var(--story-width)) / 2 - var(--p-overhang, 28px));
+                width: calc(var(--story-width) + (var(--p-overhang, 28px) * 2));
+            }
+          }
+        }
+        @scope ([data-impeccable-variant="2"]) {
+          :scope > .v2-plate {
+            --overhang: 28px;
+            left: calc(clamp(16px, 3vw, 48px) / 2 + 26vw - min(17.5vw, 27ch) - var(--overhang));
+            bottom: calc(9dvh + 15vh);
+            width: calc(min(35vw, 54ch) + (var(--overhang) * 2));
+            height: 16dvh;
+            transform: translate(0, 6px);
+            background: var(--olive);
+            font-size: 1rem;
+            z-index: var(--z-halftone);
+          }
+          :scope[data-p-overhang="airy"] > .v2-plate { --overhang: 40px; }
+          :scope[data-p-overhang="packed"] > .v2-plate { --overhang: 16px; }
+        }
+        @scope ([data-impeccable-variant="3"]) {
+          :scope > .v3-plate {
+            left: calc(clamp(16px, 3vw, 48px) - 28px + var(--p-offset, -4px));
+            bottom: calc(9dvh + 15vh);
+            width: calc(min(35vw, 54ch) + 56px);
+            height: 16dvh;
+            transform: translate(0, 6px);
+            background: var(--olive);
+            font-size: 1rem;
+            z-index: var(--z-halftone);
+          }
+          @media (min-width: 900px) {
+            :scope > .v3-plate {
+              left: calc((45vw - var(--story-width)) / 2 - 28px + var(--p-offset, -4px));
+              width: calc(var(--story-width) + 56px);
+            }
+          }
+        }
+      </style>
+      <div data-impeccable-variant="1" data-impeccable-params='[{"id":"overhang","kind":"range","min":16,"max":40,"step":2,"default":28,"label":"Overhang"}]'>
+        <div class="plate v1-plate" aria-hidden="true"></div>
+      </div>
+      <div data-impeccable-variant="2" style="display: none" data-impeccable-params='[{"id":"overhang","kind":"steps","default":"snug","label":"Overhang","options":[{"value":"airy","label":"Airy"},{"value":"snug","label":"Snug"},{"value":"packed","label":"Packed"}]}]'>
+        <div class="plate v2-plate" aria-hidden="true"></div>
+      </div>
+      <div data-impeccable-variant="3" style="display: none" data-impeccable-params='[{"id":"offset","kind":"range","min":-12,"max":12,"step":2,"default":-4,"label":"Register offset"}]'>
+        <div class="plate v3-plate" aria-hidden="true"></div>
+      </div>
+    </div>
+    <!-- impeccable-variants-end 04bbcafd -->
 
     <div class="portrait-frame">
       <img :src="'img/djt/' + image.file" :alt="image.alt" width="1000" height="1300">
@@ -506,6 +655,11 @@
         if (n > 48) return 'long';
         return null;
       },
+      get descLenClass() {
+        const raw = this.current ? (this.current.description || '') : '';
+        const n = raw.replace(/\s+/g, ' ').trim().length;
+        return n > 0 && n <= 160 ? 'short' : null;
+      },
       get image() { return this.images[this.idx % this.images.length]; },
       get source() { return (this.current && this.current.source || '').replace(/\s*>.*$/, ''); },
       get date() {
@@ -528,5 +682,8 @@
     }));
   });
   </script>
+<!-- impeccable-live-start -->
+<script src="http://localhost:8400/live.js"></script>
+<!-- impeccable-live-end -->
 </body>
 </html>
