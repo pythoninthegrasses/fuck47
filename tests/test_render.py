@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.db import ArticleDB
-from utils.render import render_archive
+from utils.render import render_archive, render_index
 
 
 def _article(url, title, published_at='2026-07-01 10:00', source='Example News'):
@@ -123,3 +123,104 @@ class TestRenderArchive:
 
         assert '<script>alert(1)</script>' not in fragment_html
         assert '&lt;script&gt;' in fragment_html
+
+
+TEMPLATE = (
+    '<!DOCTYPE html>\n<html>\n<body>\n'
+    '<!-- ARTICLES:BEGIN -->\n'
+    '<script type="application/json" id="poster-articles">[]</script>\n'
+    '<noscript><ul id="poster-fallback"></ul></noscript>\n'
+    '<!-- ARTICLES:END -->\n'
+    '</body>\n</html>\n'
+)
+
+
+def _seed_db(db_path, articles):
+    db = ArticleDB(str(db_path))
+    try:
+        db.insert_articles(articles)
+    finally:
+        db.close()
+
+
+class TestRenderIndex:
+    def test_injects_articles_json_between_markers(self, tmp_path):
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+        _seed_db(db_path, [_article('https://example.com/a', 'Trump Article A')])
+
+        count = render_index(str(db_path), str(index_path))
+
+        assert count == 1
+        html = index_path.read_text()
+        assert 'Trump Article A' in html
+        assert 'https://example.com/a' in html
+        assert '<!-- ARTICLES:BEGIN -->' in html
+        assert '<!-- ARTICLES:END -->' in html
+
+    def test_rerun_replaces_previous_injection(self, tmp_path):
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+        _seed_db(db_path, [_article('https://example.com/a', 'Trump Article A')])
+
+        render_index(str(db_path), str(index_path))
+        render_index(str(db_path), str(index_path))
+
+        html = index_path.read_text()
+        assert html.count('https://example.com/a') == 2  # once in JSON, once in noscript
+        assert html.count('poster-articles') == 1
+
+    def test_missing_db_leaves_file_unchanged(self, tmp_path):
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+
+        count = render_index(str(tmp_path / 'missing.duckdb'), str(index_path))
+
+        assert count == 0
+        assert index_path.read_text() == TEMPLATE
+
+    def test_orders_most_recent_first_and_limits(self, tmp_path):
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+        _seed_db(
+            db_path,
+            [
+                _article('https://example.com/old', 'Old Article', published_at='2026-06-30 09:00'),
+                _article('https://example.com/new', 'New Article', published_at='2026-07-01 09:00'),
+            ],
+        )
+
+        render_index(str(db_path), str(index_path), limit=1)
+
+        html = index_path.read_text()
+        assert 'New Article' in html
+        assert 'Old Article' not in html
+
+    def test_escapes_script_breakout_and_html(self, tmp_path):
+        """Titles come from untrusted feeds; must not break out of the JSON script tag or noscript list."""
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+        _seed_db(db_path, [_article('https://example.com/xss', '</script><script>alert(1)</script>')])
+
+        render_index(str(db_path), str(index_path))
+
+        html = index_path.read_text()
+        assert '</script><script>alert(1)' not in html
+        assert '<\\/script>' in html
+        assert '&lt;script&gt;' in html
+
+    def test_writes_noscript_fallback_links(self, tmp_path):
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+        _seed_db(db_path, [_article('https://example.com/a', 'Trump Article A')])
+
+        render_index(str(db_path), str(index_path))
+
+        html = index_path.read_text()
+        assert '<noscript>' in html
+        assert '<a href="https://example.com/a"' in html

@@ -1,10 +1,14 @@
 #!/usr/bin/env python
 
 import duckdb
+import json
+import re
 from html import escape
 from pathlib import Path
 
 ARCHIVE_STORE = 'filtered_articles'
+INDEX_MARKER_BEGIN = '<!-- ARTICLES:BEGIN -->'
+INDEX_MARKER_END = '<!-- ARTICLES:END -->'
 
 
 def _dates_with_snapshots(archive_dir, store=ARCHIVE_STORE):
@@ -75,6 +79,64 @@ def _render_index(dates):
     )
 
 
+def _filtered_articles(db_path, limit):
+    """Newest filtered articles from the pipeline's DuckDB store."""
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        rows = con.execute(
+            """
+            SELECT url, title, description, source, published_at
+            FROM articles
+            ORDER BY published_at DESC, source ASC
+            LIMIT ?
+            """,
+            [limit],
+        ).fetchall()
+        columns = [col[0] for col in con.description]
+    finally:
+        con.close()
+    return [dict(zip(columns, row, strict=False)) for row in rows]
+
+
+def render_index(db_path='filtered_articles.duckdb', index_path='app/index.html', limit=30):
+    """Inject the filtered articles into the static index page, in place.
+
+    Replaces the block between the ARTICLES:BEGIN/END markers in index_path with a
+    JSON payload (consumed by Alpine to rotate posters) and a noscript link list.
+    If the filtered store is missing, the page is left untouched so the site keeps
+    serving the previous run's output (same failure posture as main.py's sentiment
+    fallback). Returns the number of articles injected.
+    """
+    index_file = Path(index_path)
+    if not Path(db_path).exists():
+        return 0
+
+    articles = _filtered_articles(db_path, limit)
+
+    # `</` escaped so untrusted titles cannot close the script tag from inside the JSON.
+    payload = json.dumps(articles, ensure_ascii=False).replace('</', '<\\/')
+    links = '\n'.join(
+        f'      <li><a href="{escape(a["url"])}">{escape(a["title"] or a["url"])}</a> &mdash; {escape(a["source"] or "")}</li>'
+        for a in articles
+    )
+    block = (
+        f'{INDEX_MARKER_BEGIN}\n'
+        f'    <script type="application/json" id="poster-articles">{payload}</script>\n'
+        f'    <noscript><ul id="poster-fallback">\n{links}\n    </ul></noscript>\n'
+        f'    {INDEX_MARKER_END}'
+    )
+    html = index_file.read_text()
+    html = re.sub(
+        re.escape(INDEX_MARKER_BEGIN) + r'.*?' + re.escape(INDEX_MARKER_END),
+        lambda _: block,
+        html,
+        count=1,
+        flags=re.DOTALL,
+    )
+    index_file.write_text(html)
+    return len(articles)
+
+
 def render_archive(archive_dir='archive', output_dir='app/archive'):
     """Render a static htmx-driven archive index and per-date fragments.
 
@@ -97,4 +159,6 @@ def render_archive(archive_dir='archive', output_dir='app/archive'):
 if __name__ == '__main__':
     from config import ARCHIVE_DIR
 
+    count = render_index()
+    print(f'Injected {count} articles into app/index.html')
     render_archive(ARCHIVE_DIR)
