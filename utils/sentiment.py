@@ -29,6 +29,7 @@ SYSTEM_PROMPT = (
 )
 
 _CODE_FENCE_RE = re.compile(r'^```(?:json)?\s*|\s*```$', re.MULTILINE)
+_JSON_ARRAY_RE = re.compile(r'\[.*\]', re.DOTALL)
 
 
 class SentimentJudgeError(Exception):
@@ -49,8 +50,17 @@ def _parse_response(raw_content: str, expected_count: int) -> dict[int, float]:
 
     try:
         parsed = json.loads(cleaned)
-    except (json.JSONDecodeError, TypeError) as e:
-        raise SentimentJudgeError(f"Could not parse judge response as JSON: {e}") from e
+    except (json.JSONDecodeError, TypeError):
+        # Some models (e.g. reasoning models via a local server) wrap the JSON array in
+        # surrounding prose despite the system prompt asking for JSON only. Retry once
+        # against the outermost [...] substring before giving up.
+        match = _JSON_ARRAY_RE.search(cleaned)
+        if match is None:
+            raise SentimentJudgeError(f"Could not parse judge response as JSON: {cleaned!r}") from None
+        try:
+            parsed = json.loads(match.group(0))
+        except json.JSONDecodeError as e:
+            raise SentimentJudgeError(f"Could not parse judge response as JSON: {e}") from e
 
     if not isinstance(parsed, list):
         raise SentimentJudgeError(f"Judge response was not a JSON array: {parsed!r}")
@@ -71,12 +81,29 @@ def _parse_response(raw_content: str, expected_count: int) -> dict[int, float]:
     return scores
 
 
-def score_articles(articles: list[dict]) -> dict[int, float]:
+def score_articles(
+    articles: list[dict],
+    *,
+    base_url: str = None,
+    model: str = None,
+    api_key: str = None,
+    temperature: float = None,
+    extra_body: dict = None,
+    timeout: float = None,
+) -> dict[int, float]:
     """
     Score each article's sentiment toward DJT via a single batched LLM call.
 
     Args:
         articles: List of article dictionaries (uses 'title' and 'description').
+        base_url: Override for LLM_BASE_URL (e.g. to hit a local OpenAI-compatible server).
+        model: Override for LLM_MODEL.
+        api_key: Override for LLM_API_KEY.
+        temperature: If given, included in the request payload. Omitted by default so the
+            request sent to the configured provider (Fireworks) is unchanged.
+        extra_body: Extra fields merged into the request JSON (e.g. provider-specific
+            chat_template_kwargs). Ignored by providers that don't recognize them.
+        timeout: Override for REQUEST_TIMEOUT, in seconds.
 
     Returns:
         Mapping of list-index -> sentiment_score (-1.0 very unfavorable .. 1.0 very favorable).
@@ -87,22 +114,33 @@ def score_articles(articles: list[dict]) -> dict[int, float]:
     if not articles:
         return {}
 
+    base_url = base_url or LLM_BASE_URL
+    model = model or LLM_MODEL
+    api_key = api_key or LLM_API_KEY
+    timeout = timeout if timeout is not None else REQUEST_TIMEOUT
+
+    payload = {
+        'model': model,
+        'messages': [
+            {'role': 'system', 'content': SYSTEM_PROMPT},
+            {'role': 'user', 'content': _build_prompt(articles)},
+        ],
+    }
+    if temperature is not None:
+        payload['temperature'] = temperature
+    if extra_body:
+        payload.update(extra_body)
+
     with start_action(action_type="sentiment_judge", article_count=len(articles)) as action:
         try:
             response = requests.post(
-                f"{LLM_BASE_URL}/chat/completions",
+                f"{base_url}/chat/completions",
                 headers={
-                    'Authorization': f"Bearer {LLM_API_KEY}",
+                    'Authorization': f"Bearer {api_key}",
                     'Content-Type': 'application/json',
                 },
-                json={
-                    'model': LLM_MODEL,
-                    'messages': [
-                        {'role': 'system', 'content': SYSTEM_PROMPT},
-                        {'role': 'user', 'content': _build_prompt(articles)},
-                    ],
-                },
-                timeout=REQUEST_TIMEOUT,
+                json=payload,
+                timeout=timeout,
             )
             response.raise_for_status()
         except requests.RequestException as e:
@@ -110,10 +148,16 @@ def score_articles(articles: list[dict]) -> dict[int, float]:
             raise SentimentJudgeError(f"Sentiment judge request failed: {e}") from e
 
         try:
-            content = response.json()['choices'][0]['message']['content']
+            message = response.json()['choices'][0]['message']
+            content = message['content']
         except (KeyError, IndexError, TypeError, ValueError) as e:
             action.log(message_type="sentiment_judge:unexpected_response_shape", error=str(e))
             raise SentimentJudgeError(f"Unexpected judge response shape: {e}") from e
+
+        if not content or not content.strip():
+            # Reasoning models served via a local bridge (e.g. oMLX) may leave 'content'
+            # empty and put the answer in 'reasoning_content' instead.
+            content = message.get('reasoning_content') or content
 
         try:
             scores = _parse_response(content, len(articles))

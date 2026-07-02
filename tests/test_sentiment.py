@@ -130,3 +130,99 @@ class TestScoreArticles:
 
             assert scores == {}
             mock_post.assert_not_called()
+
+
+class TestScoreArticlesTargetOverrides:
+    """Test cases for the optional target-override params (used by cli.py to hit a local judge)."""
+
+    @patch('utils.sentiment.requests.post')
+    def test_default_call_omits_temperature_and_uses_config_target(self, mock_post, sample_articles):
+        """No overrides: request goes to the configured URL/model/key and has no 'temperature' key."""
+        mock_post.return_value = _chat_completion_response(
+            [{'index': 0, 'sentiment_score': -0.5}, {'index': 1, 'sentiment_score': 0.5}]
+        )
+
+        score_articles(sample_articles)
+
+        _, kwargs = mock_post.call_args
+        assert 'temperature' not in kwargs['json'], "temperature must be omitted to preserve existing Fireworks payload"
+
+    @patch('utils.sentiment.requests.post')
+    def test_overrides_reach_the_request(self, mock_post, sample_articles):
+        """base_url/model/api_key/timeout overrides should be used instead of the config globals."""
+        mock_post.return_value = _chat_completion_response(
+            [{'index': 0, 'sentiment_score': -0.5}, {'index': 1, 'sentiment_score': 0.5}]
+        )
+
+        score_articles(
+            sample_articles,
+            base_url='http://localhost:8000/v1',
+            model='gpt-oss-20b-OptiQ-4bit',
+            api_key='omgitsomlx',
+            timeout=60,
+        )
+
+        args, kwargs = mock_post.call_args
+        assert args[0] == 'http://localhost:8000/v1/chat/completions'
+        assert kwargs['json']['model'] == 'gpt-oss-20b-OptiQ-4bit'
+        assert kwargs['headers']['Authorization'] == 'Bearer omgitsomlx'
+        assert kwargs['timeout'] == 60
+
+    @patch('utils.sentiment.requests.post')
+    def test_temperature_included_when_given(self, mock_post, sample_articles):
+        """Passing temperature should add it to the payload for deterministic local scoring."""
+        mock_post.return_value = _chat_completion_response(
+            [{'index': 0, 'sentiment_score': -0.5}, {'index': 1, 'sentiment_score': 0.5}]
+        )
+
+        score_articles(sample_articles, temperature=0)
+
+        _, kwargs = mock_post.call_args
+        assert kwargs['json']['temperature'] == 0
+
+    @patch('utils.sentiment.requests.post')
+    def test_extra_body_is_merged_into_payload(self, mock_post, sample_articles):
+        """extra_body lets callers pass provider-specific hints without touching the default payload shape."""
+        mock_post.return_value = _chat_completion_response(
+            [{'index': 0, 'sentiment_score': -0.5}, {'index': 1, 'sentiment_score': 0.5}]
+        )
+
+        score_articles(sample_articles, extra_body={'chat_template_kwargs': {'enable_thinking': False}})
+
+        _, kwargs = mock_post.call_args
+        assert kwargs['json']['chat_template_kwargs'] == {'enable_thinking': False}
+
+
+class TestScoreArticlesReasoningModelFallbacks:
+    """Test cases for hardening against reasoning models (e.g. gpt-oss via oMLX) that may
+    leave 'content' empty or wrap the JSON array in surrounding prose."""
+
+    @patch('utils.sentiment.requests.post')
+    def test_falls_back_to_reasoning_content_when_content_is_empty(self, mock_post, sample_articles):
+        """Some local reasoning models emit the answer into reasoning_content and leave content blank."""
+        payload = json.dumps([{'index': 0, 'sentiment_score': -0.5}, {'index': 1, 'sentiment_score': 0.5}])
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            'choices': [{'message': {'content': '', 'reasoning_content': payload}}],
+        }
+        mock_post.return_value = response
+
+        scores = score_articles(sample_articles)
+
+        assert scores == {0: -0.5, 1: 0.5}
+
+    @patch('utils.sentiment.requests.post')
+    def test_json_array_embedded_in_surrounding_prose_is_extracted(self, mock_post, sample_articles):
+        """A model that answers with prose plus a trailing JSON array should still be parsed."""
+        payload = json.dumps([{'index': 0, 'sentiment_score': -0.5}, {'index': 1, 'sentiment_score': 0.5}])
+        response = Mock()
+        response.status_code = 200
+        response.json.return_value = {
+            'choices': [{'message': {'content': f'Here is my analysis:\n{payload}\nHope that helps!'}}],
+        }
+        mock_post.return_value = response
+
+        scores = score_articles(sample_articles)
+
+        assert scores == {0: -0.5, 1: 0.5}

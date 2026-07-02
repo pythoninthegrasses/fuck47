@@ -42,3 +42,9 @@ SENTIMENT_MAX_SCORE = config('SENTIMENT_MAX_SCORE', default=0.0, cast=float)
 LLM_API_KEY = config('LLM_API_KEY', default="")
 LLM_BASE_URL = config('LLM_BASE_URL', default="https://api.fireworks.ai/inference/v1")
 LLM_MODEL = config('LLM_MODEL', default="accounts/fireworks/models/gpt-oss-20b")
+
+# Local LLM judge target (see docs/ai.md and cli.py) - defaults reuse the oMLX vars
+# already used for local agentic coding (~/git/pi_config/docs/omlx-agentic-coding.md)
+LOCAL_LLM_BASE_URL = config('LOCAL_LLM_BASE_URL', default=f"{config('OMLX_BASE_URL', default='http://127.0.0.1:8000')}/v1")
+LOCAL_LLM_MODEL = config('LOCAL_LLM_MODEL', default="gpt-oss-20b-OptiQ-4bit")
+LOCAL_LLM_API_KEY = config('LOCAL_LLM_API_KEY', default=config('OMLX_API_KEY', default=""))
