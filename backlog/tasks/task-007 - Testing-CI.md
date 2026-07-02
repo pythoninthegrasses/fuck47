@@ -4,12 +4,13 @@ title: Testing & CI
 status: To Do
 assignee: []
 created_date: '2026-07-01 18:58'
+updated_date: '2026-07-02 04:20'
 labels: []
 dependencies: []
 references:
   - TODO.md
 priority: high
-ordinal: 7000
+ordinal: 12000
 ---
 
 ## Description

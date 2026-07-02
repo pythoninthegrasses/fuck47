@@ -4,13 +4,14 @@ title: Set up CI pipeline
 status: To Do
 assignee: []
 created_date: '2026-07-01 19:02'
+updated_date: '2026-07-02 04:20'
 labels: []
 dependencies: []
 references:
   - TODO.md
 parent_task_id: TASK-007
 priority: high
-ordinal: 7200
+ordinal: 13000
 ---
 
 ## Description

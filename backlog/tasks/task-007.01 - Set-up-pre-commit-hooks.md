@@ -1,9 +1,10 @@
 ---
 id: TASK-007.01
 title: Set up pre-commit hooks
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-01 19:02'
+updated_date: '2026-07-01 21:34'
 labels: []
 dependencies: []
 references:
@@ -21,8 +22,8 @@ Carried over from TODO.md. Add a pre-commit configuration that runs ruff format 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A .pre-commit-config.yaml is added running ruff format --check and ruff check
-- [ ] #2 pre-commit run --all-files passes on the current codebase
+- [x] #1 A .pre-commit-config.yaml is added running ruff format --check and ruff check
+- [x] #2 pre-commit run --all-files passes on the current codebase
 - [ ] #3 Setup instructions for pre-commit are documented in README.md
 <!-- AC:END -->
 

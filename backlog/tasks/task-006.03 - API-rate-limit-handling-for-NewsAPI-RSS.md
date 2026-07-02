@@ -1,16 +1,17 @@
 ---
 id: TASK-006.03
 title: API rate-limit handling for NewsAPI/RSS
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-07-01 19:02'
+updated_date: '2026-07-01 21:35'
 labels: []
 dependencies: []
 documentation:
   - doc-001
 parent_task_id: TASK-006
 priority: medium
-ordinal: 6300
+ordinal: 10000
 ---
 
 ## Description

@@ -4,9 +4,10 @@ title: Build step injects filtered articles into app/index.html
 status: To Do
 assignee: []
 created_date: '2026-07-01 19:01'
+updated_date: '2026-07-01 21:45'
 labels: []
 dependencies:
-  - TASK-002.03
+  - TASK-010
 documentation:
   - doc-001
 parent_task_id: TASK-003
