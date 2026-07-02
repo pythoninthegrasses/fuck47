@@ -5,6 +5,7 @@
 *.sqlite
 *.duckdb
 *.parquet
+*.wal
 articles.json
 filtered_articles.json
 CLAUDE.md
@@ -456,3 +457,4 @@ public/build
 !**/.gitkeep
 !**/*.example
 !tests/fixtures/*
+!archive/**/*.parquet
