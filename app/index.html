@@ -129,7 +129,8 @@
     z-index: var(--z-type);
     display: flex;
     flex-direction: column;
-    padding: clamp(16px, 3vh, 32px) 0 clamp(12px, 2vh, 24px) clamp(16px, 3vw, 48px);
+    /* bottom padding clears the PREV/NEXT row so the story never collides with it */
+    padding: clamp(16px, 3vh, 32px) 0 calc(clamp(12px, 2vh, 24px) + 64px) clamp(16px, 3vw, 48px);
     pointer-events: none;
   }
   .type-col a, .type-col button { pointer-events: auto; }
@@ -222,12 +223,15 @@
     transform: rotate(2deg);
   }
 
+  /* PREV sits at the image's left edge, NEXT at its right */
   .controls {
     position: absolute;
+    left: calc(45vw + clamp(16px, 2vw, 32px));
     right: clamp(16px, 3vw, 48px);
     bottom: clamp(16px, 3vh, 32px);
     z-index: var(--z-controls);
     display: flex;
+    justify-content: space-between;
     gap: 16px;
     align-items: center;
   }
@@ -345,11 +349,13 @@
       margin-top: 20px;
     }
 
-    /* keep the primary control in the thumb zone regardless of scroll */
+    /* keep the primary controls in the thumb zone regardless of scroll */
     .controls {
       position: fixed;
+      left: auto;
       right: 12px;
       bottom: 12px;
+      gap: 12px;
     }
     .backissues { margin: 12px 0 0; }
     .credit { display: none; }
@@ -450,6 +456,7 @@
     </div>
 
     <div class="controls" x-show="articles.length > 1">
+      <button type="button" @click="prev()">&larr; Prev</button>
       <button type="button" @click="next()">Next &rarr;</button>
     </div>
 
