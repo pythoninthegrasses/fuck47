@@ -1,10 +1,10 @@
 ---
 id: TASK-012
 title: Benchmark local LLM judge against Fireworks-hosted sentiment judge
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-01 22:42'
-updated_date: '2026-07-02 03:03'
+updated_date: '2026-07-02 03:04'
 labels: []
 dependencies: []
 references:
@@ -70,12 +70,34 @@ Live results against `minimax-m3` via Fireworks (`--target remote --model accoun
 Caveat: single-run, single-example signal — not a statistically robust comparison. Worth a `compare`-style multi-run evaluation before treating minimax-m3 as a production swap candidate.
 <!-- SECTION:NOTES:END -->
 
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Built reusable CLI tooling (`cli.py`) and judge-side flexibility (`utils/sentiment.py`) to benchmark sentiment-judge candidates against the production Fireworks target, then used it to evaluate three candidates end-to-end.
+
+**Core changes:**
+- `utils/sentiment.py`: `score_articles()` accepts optional `base_url`/`model`/`api_key`/`temperature`/`extra_body`/`timeout` overrides, unchanged default behavior against Fireworks. Parsing tolerates reasoning models (empty `content` -> `reasoning_content` fallback; JSON array embedded in prose).
+- `config.py`/`.env.example`: added `LOCAL_LLM_*` config (defaults to `OMLX_BASE_URL`/`OMLX_API_KEY`) for a local oMLX judge target.
+- `cli.py` (new, repo root): `health`, `fetch`, `articles`, `judge`, `compare` subcommands, plus a `--model` override on `health`/`judge` for benchmarking new hosted candidates without touching `.env`.
+- `docs/ai.md`: documents local/remote targets, `cli.py` usage, and a benchmark-results table.
+
+**Tests:** TDD throughout — `tests/test_sentiment.py` (+10 cases) and new `tests/test_cli.py` (18 cases, including 3 for `--model`), all mocked (no network/credentials needed). Full suite: 130 passed. `ruff format --check`/`ruff check` clean.
+
+**Benchmark findings (live, informational, against real DJT article sets):**
+- `gpt-oss-20b-OptiQ-4bit` (local oMLX) vs `gpt-oss-20b` (Fireworks): 84% keep/drop agreement; both misjudge lexically-neutral-but-critical framing (e.g. "Trump Pulled In $1.4 Billion From Crypto Ventures") as favorable.
+- `minimax-m3` (Fireworks, day-0 support since 2026-06-12): fastest smoke test (~1.5s), and correctly scored the same framing-class headline ("Crypto Brought Trump a Huge Windfall...") as critical (-0.80) where both gpt-oss deployments got it backwards — the first candidate to pass this specific test case. Single-run signal, not yet a robust multi-run comparison.
+
+**Follow-ups surfaced, not started (would need separate tasks if pursued):** evaluate Qwen3.6 27B/35B-A3B as further local candidates (outrank Gemma 4 on the small-model leaderboard); run a proper multi-run `compare`-style evaluation of minimax-m3 before treating it as a production swap; the pre-existing Fireworks `REQUEST_TIMEOUT` (30s, `utils/sentiment.py`) is too low for larger batches under load — a real production risk, not addressed here.
+
+**Commits:** `bd9a295` feat(sentiment), `8a8d592` feat(cli), `b649080` docs(ai), `0e0a3f0` chore(backlog).
+<!-- SECTION:FINAL_SUMMARY:END -->
+
 ## Definition of Done
 <!-- DOD:BEGIN -->
-- [ ] #1 ruff format --check --diff . passes with no changes needed
-- [ ] #2 ruff check passes with no errors
-- [ ] #3 pytest passes (all tests green)
-- [ ] #4 New feature/bugfix developed test-first: failing test written before implementation
-- [ ] #5 Relevant docs updated (README.md / AGENTS.md)
-- [ ] #6 Committed as atomic conventional commit(s)
+- [x] #1 ruff format --check --diff . passes with no changes needed
+- [x] #2 ruff check passes with no errors
+- [x] #3 pytest passes (all tests green)
+- [x] #4 New feature/bugfix developed test-first: failing test written before implementation
+- [x] #5 Relevant docs updated (README.md / AGENTS.md)
+- [x] #6 Committed as atomic conventional commit(s)
 <!-- DOD:END -->
