@@ -458,3 +458,6 @@ public/build
 !**/*.example
 !tests/fixtures/*
 !archive/**/*.parquet
+
+# playwright mcp screenshots/artifacts
+.playwright-mcp/
