@@ -14,6 +14,7 @@ Examples:
 
 import argparse
 import requests
+import sys
 import time
 from config import (
     CACHE_HOURS,
@@ -27,10 +28,12 @@ from config import (
     SENTIMENT_MAX_SCORE,
 )
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 from utils.db import create_article_db
 from utils.filter import DJTNewsFilter
 from utils.newsapi import fetch_and_store_articles
 from utils.rss import fetch_rss_articles
+from utils.scrape import ScrapeError, extract_metadata, fetch_html
 from utils.sentiment import SentimentJudgeError, score_articles
 
 # Named judge targets. 'local' points at an oMLX (or other local OpenAI-compatible) server;
@@ -224,6 +227,61 @@ def cmd_compare(args):
     return 0
 
 
+def _resolve_field(field, cli_value, extracted_value):
+    """Return the CLI flag value if given, else the extracted value, else prompt (or None if non-interactive)."""
+    if cli_value is not None:
+        return cli_value
+    if extracted_value is not None:
+        return extracted_value
+    if not sys.stdin.isatty():
+        return None
+    return input(f"{field} not found; enter it now: ").strip() or None
+
+
+def cmd_add_article(args):
+    """Manually ingest a single article by URL: fetch, extract metadata, prompt for gaps, insert."""
+    try:
+        html = fetch_html(args.url, proxy=args.proxy)
+    except ScrapeError as e:
+        print(f"Fetch failed: {e}")
+        return 1
+
+    extracted = extract_metadata(html, url=args.url)
+
+    fields = {
+        'title': _resolve_field('title', args.title, extracted['title']),
+        'description': _resolve_field('description', args.description, extracted['description']),
+        'published_at': _resolve_field('published_at', args.date, extracted['published_at']),
+    }
+
+    missing = [name for name, value in fields.items() if value is None]
+    if missing:
+        print(f"Missing required field(s), stdin is not interactive: {', '.join(missing)}")
+        return 1
+
+    source = args.source or urlparse(args.url).hostname
+
+    db = create_article_db(args.db)
+    try:
+        inserted = db.insert_article(
+            {
+                'url': args.url,
+                'title': fields['title'],
+                'description': fields['description'],
+                'published_at': fields['published_at'],
+                'source': source,
+            }
+        )
+    finally:
+        db.close()
+
+    if inserted:
+        print(f"Inserted: {fields['title']} ({args.url})")
+    else:
+        print(f"Duplicate (already in store): {args.url}")
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='cli.py', description=__doc__.strip().splitlines()[0])
     sub = parser.add_subparsers(dest='command', required=True)
@@ -260,6 +318,16 @@ def build_parser():
     p.add_argument('--timeout', type=float, default=120)
     p.add_argument('--db', default='articles.duckdb')
     p.set_defaults(func=cmd_compare)
+
+    p = sub.add_parser('add-article', help="manually ingest an article by URL")
+    p.add_argument('url')
+    p.add_argument('--proxy')
+    p.add_argument('--db', default='articles.duckdb')
+    p.add_argument('--title')
+    p.add_argument('--description')
+    p.add_argument('--date', dest='date')
+    p.add_argument('--source')
+    p.set_defaults(func=cmd_add_article)
 
     return parser
 

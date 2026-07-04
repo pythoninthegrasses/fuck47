@@ -41,6 +41,8 @@ Each run also archives a timestamped Parquet snapshot of both stores under `arch
 
 The frontend (`app/index.html`) renders each article as a full-viewport pop-art poster per `PRODUCT.md`/`DESIGN.md`: a duotone-treated DJT portrait (SVG `#silkscreen` filter + CSS halftone overlay), Anton headline paste-up strips, Special Elite body text, hard-cut rotation via Alpine. Fonts are self-hosted woff2 in `app/fonts/`; portrait sources and their fair-use attribution live in `app/img/djt/` (`attribution.json`).
 
+`utils/scrape.py` provides `fetch_html` (curl_cffi with Chrome TLS impersonation, optional `proxy`) and `extract_metadata` (trafilatura, returns `title`/`description`/`published_at`) for `uv run ./cli.py add-article <url>`, which manually ingests one article into the DuckDB store — useful for paywalled/obscure sources the automated pipeline misses. Any field extraction misses is prompted for interactively (or `--title`/`--description`/`--date`/`--source` to supply it directly); if stdin isn't a TTY and fields are still missing, the command exits non-zero listing them. Duplicates are reported via the existing `ArticleDB` dedup-by-url path, no error.
+
 ### Making Changes
 
 - Edit `main.py` for code changes
