@@ -587,7 +587,7 @@
             <h1 class="headline" x-ref="headline"><span x-text="current.title"></span></h1>
           </div>
           <div class="story" x-ref="story">
-            <p class="desc" x-text="current.description"></p>
+            <p class="desc" x-text="current.description" x-ref="desc"></p>
             <p class="byline">
               <span x-text="source"></span>
               <span x-text="date"></span>
@@ -675,10 +675,12 @@
       fitHeadline() {
         const headline = this.$refs.headline;
         const block = this.$refs.headlineBlock;
+        const desc = this.$refs.desc;
         if (!headline || !block) return;
 
         if (!window.matchMedia('(min-width: 900px)').matches) {
           headline.style.fontSize = '';
+          if (desc) desc.style.fontSize = '';
           return;
         }
 
@@ -697,30 +699,52 @@
           return el.getBoundingClientRect().height
             + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
         };
-        const typeColRect = typeCol.getBoundingClientRect();
-        const typeColCS = getComputedStyle(typeCol);
-        const contentHeight = typeColRect.height
-          - parseFloat(typeColCS.paddingTop) - parseFloat(typeColCS.paddingBottom);
-        const fixedHeight = outerHeight(masthead) + outerHeight(story) + outerHeight(backissues);
-        const available = contentHeight - fixedHeight;
-        if (available <= 0) return;
+        const available = () => {
+          const typeColRect = typeCol.getBoundingClientRect();
+          const typeColCS = getComputedStyle(typeCol);
+          const contentHeight = typeColRect.height
+            - parseFloat(typeColCS.paddingTop) - parseFloat(typeColCS.paddingBottom);
+          const fixedHeight = outerHeight(masthead) + outerHeight(story) + outerHeight(backissues);
+          return contentHeight - fixedHeight;
+        };
 
         const MIN_PX = 22;
         const MAX_PX = 110;
-        headline.style.fontSize = MAX_PX + 'px';
-        if (block.getBoundingClientRect().height <= available) return;
-
-        let lo = MIN_PX, hi = MAX_PX;
-        while (hi - lo > 1) {
-          const mid = (lo + hi) / 2;
-          headline.style.fontSize = mid + 'px';
-          if (block.getBoundingClientRect().height <= available) {
-            lo = mid;
-          } else {
-            hi = mid;
+        const fit = (space) => {
+          if (space <= 0) return MIN_PX;
+          headline.style.fontSize = MAX_PX + 'px';
+          if (block.getBoundingClientRect().height <= space) return MAX_PX;
+          let lo = MIN_PX, hi = MAX_PX;
+          while (hi - lo > 1) {
+            const mid = (lo + hi) / 2;
+            headline.style.fontSize = mid + 'px';
+            if (block.getBoundingClientRect().height <= space) {
+              lo = mid;
+            } else {
+              hi = mid;
+            }
           }
+          headline.style.fontSize = lo + 'px';
+          return lo;
+        };
+
+        if (!desc) {
+          fit(available());
+          return;
         }
-        headline.style.fontSize = lo + 'px';
+
+        // The title should always read bigger than the body copy. Try the
+        // description at progressively smaller sizes — each one frees up
+        // more vertical space for the headline — until the fitted headline
+        // is comfortably larger than the description, or we hit the floor.
+        const DESC_SIZES_PX = [20.8, 18, 16, 14.5]; // 1.3rem, 1.125rem, 1rem, 0.9rem
+        const RATIO = 1.2;
+        let fittedPx = MIN_PX;
+        for (let i = 0; i < DESC_SIZES_PX.length; i++) {
+          desc.style.fontSize = DESC_SIZES_PX[i] + 'px';
+          fittedPx = fit(available());
+          if (fittedPx >= DESC_SIZES_PX[i] * RATIO || i === DESC_SIZES_PX.length - 1) break;
+        }
       },
 
       get current() { return this.articles[this.idx] || null; },
