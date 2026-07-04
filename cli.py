@@ -17,6 +17,7 @@ import requests
 import sys
 import time
 from config import (
+    ARCHIVE_DIR,
     CACHE_HOURS,
     DJT_FILTER_MIN_SCORE,
     LLM_API_KEY,
@@ -36,6 +37,7 @@ from utils.db import create_article_db
 from utils.filter import DJTNewsFilter
 from utils.newsapi import fetch_and_store_articles
 from utils.ratelimit import RateLimiter
+from utils.render import render_index
 from utils.rss import fetch_rss_articles
 from utils.scrape import ScrapeError, extract_metadata, fetch_html
 from utils.sentiment import SentimentJudgeError, score_articles
@@ -398,6 +400,82 @@ def cmd_import_upnote(args):
     return 0
 
 
+def _git_commit_and_push(index_path):
+    """Commit and push `index_path` if it has changes; no-op if the working tree is already clean."""
+    import subprocess
+
+    status = subprocess.run(['git', 'status', '--porcelain', '--', index_path], capture_output=True, text=True, check=True)
+    if not status.stdout.strip():
+        print(f"No changes to {index_path}; skipping commit/push")
+        return
+
+    subprocess.run(['git', 'add', index_path], check=True)
+    subprocess.run(['git', 'commit', '-m', 'chore(content): merge manually-reviewed backfill articles'], check=True)
+    subprocess.run(['git', 'push'], check=True)
+    print(f"Committed and pushed {index_path}")
+
+
+def cmd_merge_reviewed(args):
+    """Merge manually-reviewed staged articles directly into the live stores.
+
+    Bypasses the automated DJT filter and sentiment gate (main.py's pipeline) since these
+    articles have already been reviewed by a human - see backlog task-014's UpNote backfill.
+    Writes into both articles.duckdb (the permanent raw record) and filtered_articles.duckdb
+    (the store render_index() actually reads), then re-renders app/index.html and - unless
+    --no-push is given - commits and pushes it, triggering the GitHub Pages deploy.
+    """
+    _configure_eliot_logging(args.log)
+
+    with start_action(action_type="merge_reviewed", staging_db=args.staging_db) as action:
+        staging_db = create_article_db(args.staging_db)
+        try:
+            reviewed = staging_db.get_all_articles()
+        finally:
+            staging_db.close()
+
+        if not reviewed:
+            print("No articles in staging DB; nothing to merge")
+            return 0
+
+        run_at = datetime.now()
+
+        urls = [a['url'] for a in reviewed]
+
+        articles_db = create_article_db(args.articles_db)
+        try:
+            articles_inserted = articles_db.insert_articles(reviewed)
+            for url in urls:
+                articles_db.mark_manual_review(url)
+            articles_db.sort_and_reindex_articles()
+            articles_db.archive_snapshot(ARCHIVE_DIR, run_at)
+        finally:
+            articles_db.close()
+
+        filtered_db = create_article_db(args.filtered_db)
+        try:
+            filtered_inserted = filtered_db.insert_articles(reviewed)
+            for url in urls:
+                filtered_db.mark_manual_review(url)
+            filtered_db.sort_and_reindex_articles()
+            filtered_db.archive_snapshot(ARCHIVE_DIR, run_at)
+        finally:
+            filtered_db.close()
+
+        injected = render_index(db_path=args.filtered_db, index_path=args.index_path)
+
+        print(
+            f"Merged {len(reviewed)} reviewed article(s): "
+            f"{articles_inserted} new in {args.articles_db}, {filtered_inserted} new in {args.filtered_db}"
+        )
+        print(f"Injected {injected} articles into {args.index_path}")
+        action.add_success_fields(articles_inserted=articles_inserted, filtered_inserted=filtered_inserted, injected=injected)
+
+        if args.push:
+            _git_commit_and_push(args.index_path)
+
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(prog='cli.py', description=__doc__.strip().splitlines()[0])
     sub = parser.add_subparsers(dest='command', required=True)
@@ -453,6 +531,18 @@ def build_parser():
     p.add_argument('--dry-run', action='store_true')
     p.add_argument('--log', default='import_upnote.log', help="path to write structured (eliot) logs to")
     p.set_defaults(func=cmd_import_upnote)
+
+    p = sub.add_parser(
+        'merge-reviewed',
+        help="merge manually-reviewed staged articles into the live stores, bypassing the DJT filter and sentiment gate",
+    )
+    p.add_argument('--staging-db', default='backfill.duckdb', help="DB of manually-reviewed articles to merge")
+    p.add_argument('--articles-db', default='articles.duckdb')
+    p.add_argument('--filtered-db', default='filtered_articles.duckdb')
+    p.add_argument('--index-path', default='app/index.html')
+    p.add_argument('--log', default='merge_reviewed.log', help="path to write structured (eliot) logs to")
+    p.add_argument('--no-push', dest='push', action='store_false', help="skip git commit/push; leave local files updated only")
+    p.set_defaults(func=cmd_merge_reviewed, push=True)
 
     return parser
 

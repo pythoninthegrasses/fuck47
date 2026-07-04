@@ -442,6 +442,41 @@ class TestMainSentimentGate:
         assert stored_titles == {'Trump Negative Article', 'Trump Boundary Article'}
 
     @patch('main.score_articles')
+    def test_manual_review_articles_survive_rebuild_despite_failing_gates(
+        self, mock_score_articles, temp_articles_db, temp_filtered_db, tmp_path
+    ):
+        """Pinned (manual_review=True) rows are preserved in the rebuilt filtered store even when
+        they'd fail the DJT filter or sentiment gate - see cli.py's merge-reviewed command."""
+        article_db, temp_path = temp_articles_db
+        filtered_db, filtered_path = temp_filtered_db
+
+        pinned = self._djt_article('Manually Reviewed Article', 'https://example.com/pinned', minutes_ago=5)
+        pinned['manual_review'] = True
+        algorithmic = self._djt_article('Algorithmic Positive Article', 'https://example.com/algo', minutes_ago=10)
+        article_db.insert_articles([pinned, algorithmic])
+
+        # index 0: pinned article scores positive (would normally be excluded); 1: algorithmic article positive too
+        mock_score_articles.return_value = {0: 0.9, 1: 0.9}
+
+        with (
+            patch('main.fetch_rss_articles', return_value=[]),
+            patch('main.fetch_and_store_articles', return_value=[]),
+            patch('main.article_db', article_db),
+            patch('main.create_article_db', return_value=filtered_db),
+            patch('main.ARCHIVE_DIR', str(tmp_path / 'archive')),
+            patch('main.CACHE_HOURS', 24),
+            patch('main.DJT_FILTER_ENABLED', True),
+            patch('main.DJT_FILTER_MIN_SCORE', 1.0),
+            patch('main.SENTIMENT_ENABLED', True),
+            patch('main.SENTIMENT_MAX_SCORE', 0.0),
+        ):
+            main()
+
+        stored_titles = {a['title'] for a in filtered_db.get_all_articles()}
+        assert 'Manually Reviewed Article' in stored_titles
+        assert 'Algorithmic Positive Article' not in stored_titles
+
+    @patch('main.score_articles')
     def test_judge_failure_leaves_filtered_articles_untouched(
         self, mock_score_articles, temp_articles_db, temp_filtered_db, tmp_path
     ):

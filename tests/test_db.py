@@ -181,6 +181,58 @@ class TestArticleDB:
         assert stored[0]['djt_relevance_score'] is None
         assert stored[0]['sentiment_score'] is None
 
+    def test_insert_article_defaults_manual_review_to_false(self, temp_db):
+        """manual_review defaults to False so ordinary pipeline-fetched articles aren't pinned."""
+        temp_db.insert_article({'url': 'https://example.com/regular', 'title': 'Regular Article'})
+
+        stored = temp_db.search_by_url('https://example.com/regular')
+        assert stored[0]['manual_review'] is False
+
+    def test_insert_article_respects_manual_review_true(self, temp_db):
+        """manual_review=True round-trips, e.g. for cli.py merge-reviewed's pinned rows."""
+        temp_db.insert_article({'url': 'https://example.com/pinned', 'title': 'Pinned Article', 'manual_review': True})
+
+        stored = temp_db.search_by_url('https://example.com/pinned')
+        assert stored[0]['manual_review'] is True
+
+    def test_mark_manual_review_pins_an_existing_row(self, temp_db):
+        """mark_manual_review flags a row after insertion, independent of the original insert call -
+        used by cli.py merge-reviewed to pin rows that may have already existed (ON CONFLICT DO NOTHING
+        means insert_article alone can't retroactively flag a pre-existing row)."""
+        temp_db.insert_article({'url': 'https://example.com/existing', 'title': 'Existing Article'})
+        assert temp_db.search_by_url('https://example.com/existing')[0]['manual_review'] is False
+
+        temp_db.mark_manual_review('https://example.com/existing')
+
+        assert temp_db.search_by_url('https://example.com/existing')[0]['manual_review'] is True
+
+    def test_existing_db_without_manual_review_column_is_migrated(self, tmp_path):
+        """Opening a pre-existing articles.duckdb (created before manual_review existed) adds the column."""
+        db_path = str(tmp_path / 'legacy.duckdb')
+        con = duckdb.connect(db_path)
+        con.execute("""
+            CREATE TABLE articles (
+                url VARCHAR PRIMARY KEY,
+                published_at VARCHAR,
+                title VARCHAR,
+                description VARCHAR,
+                source VARCHAR,
+                category VARCHAR,
+                author VARCHAR,
+                djt_relevance_score DOUBLE,
+                sentiment_score DOUBLE
+            )
+        """)
+        con.execute("INSERT INTO articles (url, title) VALUES ('https://example.com/legacy', 'Legacy Article')")
+        con.close()
+
+        db = ArticleDB(db_path)
+        try:
+            stored = db.search_by_url('https://example.com/legacy')
+            assert stored[0]['manual_review'] is False
+        finally:
+            db.close()
+
     def test_search_by_url(self, populated_db, sample_articles):
         """Test searching articles by URL."""
         target_url = sample_articles[0]['url']

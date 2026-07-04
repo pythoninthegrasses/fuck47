@@ -14,6 +14,7 @@ ARTICLE_COLUMNS = [
     'author',
     'djt_relevance_score',
     'sentiment_score',
+    'manual_review',
 ]
 
 
@@ -34,9 +35,12 @@ class ArticleDB:
                 category VARCHAR,
                 author VARCHAR,
                 djt_relevance_score DOUBLE,
-                sentiment_score DOUBLE
+                sentiment_score DOUBLE,
+                manual_review BOOLEAN DEFAULT FALSE
             )
         """)
+        # Migrates pre-existing stores (created before manual_review existed) in place.
+        self.con.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS manual_review BOOLEAN DEFAULT FALSE")
         self._export_parquet()
 
     def _export_parquet(self):
@@ -45,12 +49,13 @@ class ArticleDB:
 
     def _row_values(self, article):
         url = article.get('url')
-        return [url.lower() if url else url] + [article.get(col) for col in ARTICLE_COLUMNS[1:]]
+        values = [article.get(col) for col in ARTICLE_COLUMNS[1:-1]] + [bool(article.get('manual_review', False))]
+        return [url.lower() if url else url] + values
 
     def insert_article(self, article):
         """Insert a single article if it doesn't already exist"""
         result = self.con.execute(
-            "INSERT INTO articles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING RETURNING url",
+            "INSERT INTO articles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING RETURNING url",
             self._row_values(article),
         ).fetchall()
         self._export_parquet()
@@ -63,6 +68,16 @@ class ArticleDB:
             if self.insert_article(article):
                 inserted_count += 1
         return inserted_count
+
+    def mark_manual_review(self, url):
+        """Flag an existing article as manually reviewed.
+
+        Separate from insert_article because ON CONFLICT DO NOTHING means an insert alone can't
+        retroactively pin a row that already existed (e.g. a manually-curated URL the automated
+        pipeline had already fetched) - see cli.py's merge-reviewed command.
+        """
+        self.con.execute("UPDATE articles SET manual_review = TRUE WHERE url = ?", [url.lower() if url else url])
+        self._export_parquet()
 
     def search_by_url(self, url):
         """Search for articles by URL"""

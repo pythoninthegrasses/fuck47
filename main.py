@@ -71,13 +71,20 @@ def main():
                 negative_articles = None
 
         if negative_articles is not None:
+            # Manually-reviewed articles (cli.py merge-reviewed) are pinned across every rebuild,
+            # regardless of DJT-filter/sentiment outcome - the filtered store is fully rebuilt each
+            # run, so without this a manual override would only last until the next run.
+            pinned_urls = {a['url'] for a in negative_articles}
+            pinned_articles = [a for a in all_articles if a.get('manual_review') and a['url'] not in pinned_urls]
+            to_store = negative_articles + pinned_articles
+
             # Create filtered articles database
             filtered_db = create_article_db('filtered_articles.duckdb')
             filtered_db.clear_all_articles()
-            filtered_db.insert_articles(negative_articles)
+            filtered_db.insert_articles(to_store)
             filtered_db.sort_and_reindex_articles()
             filtered_db.archive_snapshot(ARCHIVE_DIR, run_at)
-            print(f"Stored {len(negative_articles)} articles in filtered articles store")
+            print(f"Stored {len(to_store)} articles in filtered articles store ({len(pinned_articles)} pinned)")
 
     # Sort and reindex articles by published_at (desc) then source (asc)
     article_db.sort_and_reindex_articles()
