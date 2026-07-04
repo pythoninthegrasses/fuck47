@@ -1,9 +1,10 @@
 ---
 id: TASK-008
 title: 'Documentation: Fill out README'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-01 18:58'
+updated_date: '2026-07-04 05:05'
 labels: []
 dependencies: []
 references:
@@ -20,10 +21,10 @@ README.md currently contains only a project title. Carried over from TODO.md: po
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 README.md describes what the project does and links to the live site (fuckfortyseven.org)
-- [ ] #2 README.md documents setup via uv (uv sync / uv run)
-- [ ] #3 README.md documents how to run the pipeline (main.py) and the test suite (pytest)
-- [ ] #4 README.md documents required environment variables (API keys, config) without exposing secret values
+- [x] #1 README.md describes what the project does and links to the live site (fuckfortyseven.org)
+- [x] #2 README.md documents setup via uv (uv sync / uv run)
+- [x] #3 README.md documents how to run the pipeline (main.py) and the test suite (pytest)
+- [x] #4 README.md documents required environment variables (API keys, config) without exposing secret values
 <!-- AC:END -->
 
 ## Definition of Done
