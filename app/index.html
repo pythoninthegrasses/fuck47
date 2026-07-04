@@ -162,7 +162,7 @@
     line-height: 1.28;
     text-transform: uppercase;
     letter-spacing: 0.005em;
-    text-wrap: balance;
+    text-wrap: wrap;
     color: #fff;
   }
   /* size steps down as the wire headline gets longer; set via data-len from Alpine */
@@ -181,7 +181,7 @@
     width: min(50vw, 64ch, 100%);
     background: var(--stock);
     padding: 16px 20px;
-    transform: translateY(-15vh);
+    margin-top: clamp(16px, 3vh, 32px);
   }
   .story .desc {
     font-size: 1rem;
@@ -388,19 +388,19 @@
 
     .headline-block,
     .story {
-      align-self: center;
+      align-self: start;
     }
     .headline-block {
-      width: fit-content;
+      width: 100%;
       max-width: min(46vw, 66ch);
     }
-    /* narrow the story so its centered box always clears the portrait's tan plate */
+    /* narrow the story so it always clears the portrait's tan plate */
     .story {
       position: relative;
       z-index: 0;
       width: var(--story-width);
       background: transparent;
-      transform: translateY(-15vh);
+      margin-top: clamp(24px, 4vh, 48px);
     }
     .story::before {
       content: "";
@@ -425,12 +425,6 @@
     .story > * {
       position: relative;
       z-index: 1;
-    }
-    .headline-block[data-len="long"] + .story {
-      transform: translateY(-11vh);
-    }
-    .headline-block[data-len="xlong"] + .story {
-      transform: translateY(-8vh);
     }
     .plate-olive,
     [data-impeccable-variant="1"] > .v1-plate,
@@ -581,18 +575,18 @@
 
     <div class="stamp" x-show="articles.length" x-text="'No. ' + (idx + 1) + ' of ' + articles.length"></div>
 
-    <div class="type-col">
-      <header class="masthead">
+    <div class="type-col" x-ref="typeCol">
+      <header class="masthead" x-ref="masthead">
         <div class="site">FuckFortySeven</div>
         <div class="tagline">all bad news, all the time</div>
       </header>
 
       <template x-if="current">
         <div style="display: contents">
-          <div class="headline-block" aria-live="polite" :data-len="lenClass">
-            <h1 class="headline"><span x-text="current.title"></span></h1>
+          <div class="headline-block" aria-live="polite" :data-len="lenClass" x-ref="headlineBlock">
+            <h1 class="headline" x-ref="headline"><span x-text="current.title"></span></h1>
           </div>
-          <div class="story">
+          <div class="story" x-ref="story">
             <p class="desc" x-text="current.description"></p>
             <p class="byline">
               <span x-text="source"></span>
@@ -605,16 +599,16 @@
 
       <template x-if="!current">
         <div style="display: contents">
-          <div class="headline-block">
-            <h1 class="headline"><span>No bad news yet.</span></h1>
+          <div class="headline-block" x-ref="headlineBlock">
+            <h1 class="headline" x-ref="headline"><span>No bad news yet.</span></h1>
           </div>
-          <div class="story empty">
+          <div class="story empty" x-ref="story">
             <p class="desc">The presses are warming up. Try the back issues below, or come back after the next print run.</p>
           </div>
         </div>
       </template>
 
-      <p class="backissues"><a href="archive/">Back issues &rarr;</a></p>
+      <p class="backissues" x-ref="backissues"><a href="archive/">Back issues &rarr;</a></p>
     </div>
 
     <div class="controls" x-show="articles.length > 1">
@@ -657,6 +651,76 @@
             if (!document.hidden) this.next(false);
           }, 12000);
         }
+
+        const refit = () => this.fitHeadline();
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(refit);
+        } else {
+          refit();
+        }
+        this.$nextTick(refit);
+        this.$watch('idx', () => this.$nextTick(refit));
+
+        let resizeTimer = null;
+        window.addEventListener('resize', () => {
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(refit, 150);
+        });
+      },
+
+      // scales the headline to fill the space between the masthead and the
+      // story card exactly, so titles of any length neither overflow nor
+      // leave the card too far below it. desktop-only: below 900px the
+      // stacked mobile layout uses the CSS clamps in `.headline-block[data-len]`.
+      fitHeadline() {
+        const headline = this.$refs.headline;
+        const block = this.$refs.headlineBlock;
+        if (!headline || !block) return;
+
+        if (!window.matchMedia('(min-width: 900px)').matches) {
+          headline.style.fontSize = '';
+          return;
+        }
+
+        const typeCol = this.$refs.typeCol;
+        const masthead = this.$refs.masthead;
+        const story = this.$refs.story;
+        const backissues = this.$refs.backissues;
+        if (!typeCol || !masthead || !story || !backissues) return;
+
+        // .headline-block centers via margin-top/bottom: auto inside the flex
+        // column, so it isn't flush against the masthead — its real height
+        // budget is the column's content box minus what the other (fixed-size)
+        // children actually occupy, not the masthead-to-story gap.
+        const outerHeight = (el) => {
+          const cs = getComputedStyle(el);
+          return el.getBoundingClientRect().height
+            + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+        };
+        const typeColRect = typeCol.getBoundingClientRect();
+        const typeColCS = getComputedStyle(typeCol);
+        const contentHeight = typeColRect.height
+          - parseFloat(typeColCS.paddingTop) - parseFloat(typeColCS.paddingBottom);
+        const fixedHeight = outerHeight(masthead) + outerHeight(story) + outerHeight(backissues);
+        const available = contentHeight - fixedHeight;
+        if (available <= 0) return;
+
+        const MIN_PX = 22;
+        const MAX_PX = 110;
+        headline.style.fontSize = MAX_PX + 'px';
+        if (block.getBoundingClientRect().height <= available) return;
+
+        let lo = MIN_PX, hi = MAX_PX;
+        while (hi - lo > 1) {
+          const mid = (lo + hi) / 2;
+          headline.style.fontSize = mid + 'px';
+          if (block.getBoundingClientRect().height <= available) {
+            lo = mid;
+          } else {
+            hi = mid;
+          }
+        }
+        headline.style.fontSize = lo + 'px';
       },
 
       get current() { return this.articles[this.idx] || null; },
