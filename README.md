@@ -1,24 +1,40 @@
 # fuck ~~45~~ 47
 
-<!-- TODO: description -->
+When having the same conversations with friends and family goes nowhere.
 
-<!-- TODO: minimum requirements -->
 ## Minimum Requirements
 
-<!-- TODO: recommended requirements -->
-## Recommended Requirements
+* [python 3.14]()
+* [mise]()
 
-<!-- TODO: quickstart -->
 ## Quickstart
 
-<!-- TODO: development -->
+```bash
+# install deps
+mise install
+
+# sync python deps
+uv sync --all-extras
+
+# run the app
+uv run main.py
+```
+
 ## Development
 
-## TODO
+```bash
+# lint
+ruff check .
 
-See the [TODO.md](TODO.md) file for the current list of tasks.
+# format
+ruff format .
 
-## Further Reading
+# run tests
+pytest
 
-* [Claude Code](https://docs.anthropic.com/en/docs/claude-code/overview)
-* [AI Dev Tasks](https://github.com/snarktank/ai-dev-tasks)
+# render index/archive from the filtered articles store
+uv run python -m utils.render
+
+# manually add an article
+uv run ./cli.py add-article <url>
+```
