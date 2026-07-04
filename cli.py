@@ -25,6 +25,8 @@ from config import (
     LOCAL_LLM_API_KEY,
     LOCAL_LLM_BASE_URL,
     LOCAL_LLM_MODEL,
+    RATE_LIMIT_INTERVAL_SEC,
+    RATE_LIMIT_REQUESTS,
     SENTIMENT_MAX_SCORE,
 )
 from datetime import datetime, timedelta
@@ -32,6 +34,7 @@ from urllib.parse import urlparse
 from utils.db import create_article_db
 from utils.filter import DJTNewsFilter
 from utils.newsapi import fetch_and_store_articles
+from utils.ratelimit import RateLimiter
 from utils.rss import fetch_rss_articles
 from utils.scrape import ScrapeError, extract_metadata, fetch_html
 from utils.sentiment import SentimentJudgeError, score_articles
@@ -227,58 +230,153 @@ def cmd_compare(args):
     return 0
 
 
-def _resolve_field(field, cli_value, extracted_value):
-    """Return the CLI flag value if given, else the extracted value, else prompt (or None if non-interactive)."""
+def _resolve_field(field, cli_value, extracted_value, interactive=True):
+    """Return the CLI flag value if given, else the extracted value, else prompt (or None if not interactive)."""
     if cli_value is not None:
         return cli_value
     if extracted_value is not None:
         return extracted_value
-    if not sys.stdin.isatty():
+    if not interactive or not sys.stdin.isatty():
         return None
     return input(f"{field} not found; enter it now: ").strip() or None
 
 
-def cmd_add_article(args):
-    """Manually ingest a single article by URL: fetch, extract metadata, prompt for gaps, insert."""
-    try:
-        html = fetch_html(args.url, proxy=args.proxy)
-    except ScrapeError as e:
-        print(f"Fetch failed: {e}")
-        return 1
+def ingest_url(db, url, *, proxy=None, title=None, description=None, date=None, source=None, interactive=True):
+    """Fetch a URL, extract metadata, and insert it into `db`.
 
-    extracted = extract_metadata(html, url=args.url)
+    Returns (status, detail) where status is one of 'inserted', 'duplicate', 'fetch_failed',
+    or 'missing_fields'. `interactive` controls whether gaps in extraction are prompted for
+    (single add-article) or silently left missing (batch import, e.g. import-upnote).
+    """
+    try:
+        html = fetch_html(url, proxy=proxy)
+    except ScrapeError as e:
+        return 'fetch_failed', str(e)
+
+    extracted = extract_metadata(html, url=url)
 
     fields = {
-        'title': _resolve_field('title', args.title, extracted['title']),
-        'description': _resolve_field('description', args.description, extracted['description']),
-        'published_at': _resolve_field('published_at', args.date, extracted['published_at']),
+        'title': _resolve_field('title', title, extracted['title'], interactive=interactive),
+        'description': _resolve_field('description', description, extracted['description'], interactive=interactive),
+        'published_at': _resolve_field('published_at', date, extracted['published_at'], interactive=interactive),
     }
 
     missing = [name for name, value in fields.items() if value is None]
     if missing:
-        print(f"Missing required field(s), stdin is not interactive: {', '.join(missing)}")
-        return 1
+        return 'missing_fields', ', '.join(missing)
 
-    source = args.source or urlparse(args.url).hostname
+    resolved_source = source or urlparse(url).hostname
+    inserted = db.insert_article(
+        {
+            'url': url,
+            'title': fields['title'],
+            'description': fields['description'],
+            'published_at': fields['published_at'],
+            'source': resolved_source,
+        }
+    )
 
+    if inserted:
+        return 'inserted', fields['title']
+    return 'duplicate', None
+
+
+def cmd_add_article(args):
+    """Manually ingest a single article by URL: fetch, extract metadata, prompt for gaps, insert."""
     db = create_article_db(args.db)
     try:
-        inserted = db.insert_article(
-            {
-                'url': args.url,
-                'title': fields['title'],
-                'description': fields['description'],
-                'published_at': fields['published_at'],
-                'source': source,
-            }
+        status, detail = ingest_url(
+            db, args.url, proxy=args.proxy, title=args.title, description=args.description, date=args.date, source=args.source
         )
     finally:
         db.close()
 
-    if inserted:
-        print(f"Inserted: {fields['title']} ({args.url})")
-    else:
-        print(f"Duplicate (already in store): {args.url}")
+    if status == 'fetch_failed':
+        print(f"Fetch failed: {detail}")
+        return 1
+    if status == 'missing_fields':
+        print(f"Missing required field(s), stdin is not interactive: {detail}")
+        return 1
+    if status == 'inserted':
+        print(f"Inserted: {detail} ({args.url})")
+        return 0
+    print(f"Duplicate (already in store): {args.url}")
+    return 0
+
+
+def cmd_import_upnote(args):
+    """Backfill articles from local UpNote notes tagged #fuck45 or mentioning 'trump' into a staging DB."""
+    import sqlite3
+    import tempfile
+    from utils.upnote import DEFAULT_DB_PATH, copy_db_readonly, extract_url, hint_link, iter_matching_notes
+
+    src_db = args.upnote_db or DEFAULT_DB_PATH
+    with tempfile.TemporaryDirectory() as tmp:
+        copied = copy_db_readonly(src_db, tmp)
+        con = sqlite3.connect(copied)
+        try:
+            notes = list(iter_matching_notes(con))
+        finally:
+            con.close()
+
+    candidates = []
+    seen_urls = set()
+    unresolved = []  # (title, hint_link_or_None) - no confidently-extracted URL; needs manual add-article
+    for note in notes:
+        url = extract_url(note)
+        if not url:
+            unresolved.append((note.get('title'), hint_link(note)))
+            continue
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        candidates.append((url, note.get('title')))
+
+    if args.limit:
+        candidates = candidates[: args.limit]
+
+    if args.dry_run:
+        for url, title in candidates:
+            print(f"{url}  ({title})")
+        print(f"{len(candidates)} high-confidence candidate URL(s), {len(unresolved)} note(s) need manual review")
+        return 0
+
+    limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_INTERVAL_SEC)
+    counts = {'inserted': 0, 'duplicate': 0, 'fetch_failed': 0, 'missing_fields': 0, 'unresolved': len(unresolved)}
+    failed_urls = []
+
+    db = create_article_db(args.db)
+    try:
+        for url, _title in candidates:
+            limiter.acquire()
+            status, detail = ingest_url(db, url, proxy=args.proxy, interactive=False)
+            counts[status] += 1
+            if status == 'fetch_failed':
+                failed_urls.append(url)
+            print(f"{status:<14} {url}")
+    finally:
+        db.close()
+
+    print(
+        f"\n{len(candidates)} URL(s) processed: "
+        f"inserted={counts['inserted']} duplicate={counts['duplicate']} "
+        f"fetch_failed={counts['fetch_failed']} missing_fields={counts['missing_fields']} "
+        f"unresolved={counts['unresolved']}"
+    )
+
+    if failed_urls:
+        report_path = args.report or 'upnote_import_failures.txt'
+        with open(report_path, 'w') as f:
+            f.write('\n'.join(failed_urls) + '\n')
+        print(f"Wrote {len(failed_urls)} failed URL(s) to {report_path}")
+
+    if unresolved:
+        review_path = args.review_report or 'upnote_import_unresolved.txt'
+        with open(review_path, 'w') as f:
+            for title, hint in unresolved:
+                f.write(f"{title}\t{hint or '(no link found)'}\n")
+        print(f"Wrote {len(unresolved)} unresolved note(s) (no confident URL) to {review_path} for manual add-article")
+
     return 0
 
 
@@ -328,6 +426,18 @@ def build_parser():
     p.add_argument('--date', dest='date')
     p.add_argument('--source')
     p.set_defaults(func=cmd_add_article)
+
+    p = sub.add_parser('import-upnote', help="backfill articles from UpNote notes tagged #fuck45 or mentioning 'trump'")
+    p.add_argument('--db', default='backfill.duckdb', help="staging DB to insert backfilled articles into")
+    p.add_argument('--upnote-db', help="path to UpNote's sqlite3 file (default: the standard macOS container path)")
+    p.add_argument('--proxy')
+    p.add_argument('--limit', type=int)
+    p.add_argument('--dry-run', action='store_true')
+    p.add_argument('--report', help="path to write failed URLs to (default: upnote_import_failures.txt)")
+    p.add_argument(
+        '--review-report', help="path to write unresolved notes (no confident URL) to (default: upnote_import_unresolved.txt)"
+    )
+    p.set_defaults(func=cmd_import_upnote)
 
     return parser
 
