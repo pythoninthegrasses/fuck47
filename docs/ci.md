@@ -1,6 +1,16 @@
 # CI
 
-Two GitHub Actions workflows drive the site.
+Three GitHub Actions workflows drive the site.
+
+## `.github/workflows/ci.yml`
+
+Runs the test/lint gate on every push to `main` and every pull request.
+
+### Checks
+
+1. `uv run ruff format --check --diff .`
+2. `uv run ruff check .`
+3. `uv run pytest`
 
 ## `.github/workflows/news-refresh.yml`
 
