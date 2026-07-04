@@ -23,8 +23,14 @@ def fake_upnote_db(tmp_path):
     return str(tmp_path / 'upnote.sqlite3')
 
 
-def _args(db_path, upnote_db, **overrides):
-    argv = ['import-upnote', '--db', db_path, '--upnote-db', upnote_db]
+@pytest.fixture(autouse=True)
+def log_path(tmp_path):
+    """Point eliot's log destination at a tmp file so tests never write into the repo root."""
+    return str(tmp_path / 'import_upnote.log')
+
+
+def _args(db_path, upnote_db, log_path=None, **overrides):
+    argv = ['import-upnote', '--db', db_path, '--upnote-db', upnote_db, '--log', log_path or 'import_upnote.log']
     for flag, value in overrides.items():
         flag_name = f'--{flag.replace("_", "-")}'
         if value is True:
@@ -46,6 +52,8 @@ _NOTES = [
         'text': 'Full clip with no dedicated url line, just body text.',
         'html': '<a href="https://example.com/some-hint">hint</a>',
     },
+    {'id': '5', 'title': 'A YouTube clip', 'text': 'Headline\nhttps://www.youtube.com/watch?v=abc123\nBy Author', 'html': ''},
+    {'id': '6', 'title': 'A Quora answer', 'text': 'Headline\nhttps://www.quora.com/some-question\nBy Author', 'html': ''},
 ]
 
 
@@ -55,10 +63,10 @@ _NOTES = [
 @patch('utils.upnote.iter_matching_notes', side_effect=lambda con: iter(_NOTES))
 @patch('utils.upnote.copy_db_readonly')
 class TestCmdImportUpnote:
-    def test_dry_run_lists_candidates_without_inserting(
-        self, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, capsys
+    def test_dry_run_lists_high_confidence_candidates_and_counts(
+        self, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, log_path, capsys
     ):
-        rc = cli.cmd_import_upnote(_args(db_path, fake_upnote_db, dry_run=True))
+        rc = cli.cmd_import_upnote(_args(db_path, fake_upnote_db, log_path, dry_run=True))
 
         out = capsys.readouterr().out
         assert rc == 0
@@ -66,93 +74,85 @@ class TestCmdImportUpnote:
         assert 'https://example.com/b' in out
         # deduped: url from note 3 should not appear twice
         assert out.count('https://example.com/a') == 1
+        # youtube/quora resolved a URL but must not appear as candidates
+        assert 'youtube.com' not in out
+        assert 'quora.com' not in out
         assert '2 high-confidence candidate' in out
         assert '1 note(s) need manual review' in out
+        assert '2 excluded' in out
 
-    def test_dry_run_never_touches_db(self, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db):
-        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, dry_run=True))
+    def test_dry_run_never_touches_db(self, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, log_path):
+        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, log_path, dry_run=True))
 
         assert not Path(db_path).exists()
 
     @patch('cli.ingest_url')
     def test_processes_deduped_urls_and_reports_summary(
-        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, tmp_path, capsys
+        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, log_path, capsys
     ):
         mock_ingest.side_effect = [('inserted', 'Title A'), ('inserted', 'Title B')]
 
-        rc = cli.cmd_import_upnote(_args(db_path, fake_upnote_db, review_report=str(tmp_path / 'unresolved.txt')))
+        rc = cli.cmd_import_upnote(_args(db_path, fake_upnote_db, log_path))
 
         out = capsys.readouterr().out
         assert rc == 0
         assert mock_ingest.call_count == 2
         assert 'inserted=2' in out
         assert 'unresolved=1' in out
+        assert 'excluded=2' in out
 
     @patch('cli.ingest_url')
-    def test_continues_past_fetch_failure_and_writes_report(
-        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, tmp_path, capsys
+    def test_excluded_urls_are_never_passed_to_ingest_url(
+        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, log_path
+    ):
+        mock_ingest.return_value = ('inserted', 'Title')
+
+        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, log_path))
+
+        called_urls = [call.args[1] for call in mock_ingest.call_args_list]
+        assert not any('youtube' in url or 'quora' in url for url in called_urls)
+
+    @patch('cli.ingest_url')
+    def test_continues_past_fetch_failure(
+        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, log_path, capsys
     ):
         mock_ingest.side_effect = [('fetch_failed', 'boom'), ('inserted', 'Title B')]
-        report_path = str(tmp_path / 'failures.txt')
 
-        rc = cli.cmd_import_upnote(
-            _args(db_path, fake_upnote_db, report=report_path, review_report=str(tmp_path / 'unresolved.txt'))
-        )
+        rc = cli.cmd_import_upnote(_args(db_path, fake_upnote_db, log_path))
 
         out = capsys.readouterr().out
         assert rc == 0
         assert 'fetch_failed=1' in out
-        assert Path(report_path).read_text().strip() == 'https://example.com/a'
-
-    @patch('cli.ingest_url')
-    def test_writes_unresolved_notes_with_hint_link(
-        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, tmp_path
-    ):
-        mock_ingest.return_value = ('inserted', 'Title')
-        review_path = str(tmp_path / 'unresolved.txt')
-
-        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, review_report=review_path))
-
-        contents = Path(review_path).read_text()
-        assert 'Unresolved note' in contents
-        assert 'https://example.com/some-hint' in contents
+        assert mock_ingest.call_count == 2
 
     @patch('cli.ingest_url')
     def test_limit_caps_number_processed(
-        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, tmp_path
+        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, log_path
     ):
         mock_ingest.return_value = ('inserted', 'Title')
 
-        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, limit=1, review_report=str(tmp_path / 'unresolved.txt')))
+        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, log_path, limit=1))
 
         assert mock_ingest.call_count == 1
 
     @patch('cli.ingest_url')
     def test_calls_ingest_url_non_interactively_with_proxy(
-        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, tmp_path
+        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, log_path
     ):
         mock_ingest.return_value = ('inserted', 'Title')
 
-        cli.cmd_import_upnote(
-            _args(
-                db_path,
-                fake_upnote_db,
-                proxy='http://localhost:8080',
-                limit=1,
-                review_report=str(tmp_path / 'unresolved.txt'),
-            )
-        )
+        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, log_path, proxy='http://localhost:8080', limit=1))
 
         assert mock_ingest.call_args.kwargs.get('proxy') == 'http://localhost:8080'
         assert mock_ingest.call_args.kwargs.get('interactive') is False
 
     @patch('cli.ingest_url')
     def test_real_run_uses_staging_db_not_live_db(
-        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, tmp_path
+        self, mock_ingest, mock_copy, mock_iter, mock_connect, db_path, fake_upnote_db, log_path
     ):
         mock_ingest.return_value = ('inserted', 'Title')
 
-        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, review_report=str(tmp_path / 'unresolved.txt')))
+        cli.cmd_import_upnote(_args(db_path, fake_upnote_db, log_path))
 
         # ingest_url is mocked so nothing is actually inserted through it; this just confirms
         # the staging db file at --db is the one opened/created, not the live articles.duckdb.

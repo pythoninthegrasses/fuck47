@@ -4,7 +4,7 @@ title: Add `import-upnote` subcommand to backfill articles from UpNote notes
 status: Done
 assignee: []
 created_date: '2026-07-04 02:01'
-updated_date: '2026-07-04 02:14'
+updated_date: '2026-07-04 02:24'
 labels:
   - cli
   - scraping
@@ -64,6 +64,8 @@ Given the choice between (a) high-precision-only with a manual-review report, (b
 Live dry-run against the real UpNote store confirms: 25 high-confidence candidates, all real article URLs (no author pages, no attachment links, no reference-link false positives), 269 flagged for manual review.
 
 Read-only guarantee verified in practice: copy_db_readonly copies the live .sqlite3 + -wal/-shm sidecars to a scratch dir before any query; the live UpNote container was never opened directly (confirmed via `ps`/file listing before touching anything, and explicit user authorization was obtained before any DB access since the harness's auto-mode classifier initially blocked it as a personal-data-store read).
+
+Follow-up after initial merge, per user request: excluded YouTube/Quora URLs from the backfill scope (utils/upnote.is_excluded_source) since the goal is news articles only — 4 previously-inserted non-news rows were purged from backfill.duckdb. Replaced the flat .txt report files with eliot structured logging (import_upnote/import_upnote_unresolved/import_upnote_excluded/import_upnote_result message types, routed to --log, default import_upnote.log, gitignored) to match the project's existing eliot conventions in main.py/utils/newsapi.py/utils/sentiment.py. Re-ran against backfill.duckdb for real: 16 news articles now present (20 candidates - 1 fetch_failed - 3 missing_fields), confirmed idempotent on a second run (all 16 report 'duplicate', 0 new inserts), and confirmed 0 youtube/quora rows remain.
 <!-- SECTION:NOTES:END -->
 
 ## Definition of Done

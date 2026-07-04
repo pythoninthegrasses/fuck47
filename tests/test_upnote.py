@@ -9,7 +9,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.upnote import copy_db_readonly, extract_url, hint_link, iter_matching_notes
+from utils.upnote import copy_db_readonly, extract_url, hint_link, is_excluded_source, iter_matching_notes
 
 SCHEMA = """
 CREATE TABLE "notes" (
@@ -146,3 +146,21 @@ class TestHintLink:
 
     def test_returns_none_when_no_href(self):
         assert hint_link({'html': '<p>nothing</p>'}) is None
+
+
+class TestIsExcludedSource:
+    @pytest.mark.parametrize(
+        'url',
+        [
+            'https://www.youtube.com/watch?v=abc123',
+            'https://youtube.com/watch?v=abc123',
+            'https://youtu.be/abc123',
+            'https://www.quora.com/some-question',
+            'https://quora.com/some-question',
+        ],
+    )
+    def test_excludes_video_and_qa_platforms(self, url):
+        assert is_excluded_source(url) is True
+
+    def test_does_not_exclude_news_domains(self):
+        assert is_excluded_source('https://www.nytimes.com/2024/01/01/us/politics/story.html') is False

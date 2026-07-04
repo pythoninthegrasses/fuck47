@@ -30,6 +30,7 @@ from config import (
     SENTIMENT_MAX_SCORE,
 )
 from datetime import datetime, timedelta
+from eliot import log_message, start_action, to_file
 from urllib.parse import urlparse
 from utils.db import create_article_db
 from utils.filter import DJTNewsFilter
@@ -304,78 +305,95 @@ def cmd_add_article(args):
     return 0
 
 
+_eliot_log_configured = False
+
+
+def _configure_eliot_logging(log_path):
+    """Route eliot's structured logs to `log_path` (once per process, so repeated calls -
+    e.g. across tests in the same process - don't stack up duplicate destinations)."""
+    global _eliot_log_configured
+    if not _eliot_log_configured:
+        to_file(open(log_path, 'a'))
+        _eliot_log_configured = True
+
+
 def cmd_import_upnote(args):
-    """Backfill articles from local UpNote notes tagged #fuck45 or mentioning 'trump' into a staging DB."""
+    """Backfill news articles from local UpNote notes tagged #fuck45 or mentioning 'trump' into a staging DB."""
     import sqlite3
     import tempfile
-    from utils.upnote import DEFAULT_DB_PATH, copy_db_readonly, extract_url, hint_link, iter_matching_notes
+    from utils.upnote import DEFAULT_DB_PATH, copy_db_readonly, extract_url, hint_link, is_excluded_source, iter_matching_notes
 
-    src_db = args.upnote_db or DEFAULT_DB_PATH
-    with tempfile.TemporaryDirectory() as tmp:
-        copied = copy_db_readonly(src_db, tmp)
-        con = sqlite3.connect(copied)
+    _configure_eliot_logging(args.log)
+
+    with start_action(action_type="import_upnote", db=args.db, dry_run=args.dry_run) as action:
+        src_db = args.upnote_db or DEFAULT_DB_PATH
+        with tempfile.TemporaryDirectory() as tmp:
+            copied = copy_db_readonly(src_db, tmp)
+            con = sqlite3.connect(copied)
+            try:
+                notes = list(iter_matching_notes(con))
+            finally:
+                con.close()
+
+        candidates = []
+        seen_urls = set()
+        unresolved_count = 0  # no confidently-extracted URL; needs manual add-article
+        excluded_count = 0  # resolved URL, but from a non-article platform (video, Q&A)
+        for note in notes:
+            url = extract_url(note)
+            if not url:
+                unresolved_count += 1
+                log_message(message_type="import_upnote_unresolved", note_title=note.get('title'), hint_link=hint_link(note))
+                continue
+            if is_excluded_source(url):
+                excluded_count += 1
+                log_message(message_type="import_upnote_excluded", url=url, note_title=note.get('title'))
+                continue
+            if url in seen_urls:
+                continue
+            seen_urls.add(url)
+            candidates.append((url, note.get('title')))
+
+        if args.limit:
+            candidates = candidates[: args.limit]
+
+        if args.dry_run:
+            for url, title in candidates:
+                print(f"{url}  ({title})")
+            print(
+                f"{len(candidates)} high-confidence candidate URL(s), "
+                f"{unresolved_count} note(s) need manual review, {excluded_count} excluded (video/Q&A)"
+            )
+            return 0
+
+        limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_INTERVAL_SEC)
+        counts = {
+            'inserted': 0,
+            'duplicate': 0,
+            'fetch_failed': 0,
+            'missing_fields': 0,
+            'unresolved': unresolved_count,
+            'excluded': excluded_count,
+        }
+
+        db = create_article_db(args.db)
         try:
-            notes = list(iter_matching_notes(con))
+            for url, _title in candidates:
+                limiter.acquire()
+                status, detail = ingest_url(db, url, proxy=args.proxy, interactive=False)
+                counts[status] += 1
+                log_message(message_type="import_upnote_result", status=status, url=url, detail=detail)
+                print(f"{status:<14} {url}")
         finally:
-            con.close()
+            db.close()
 
-    candidates = []
-    seen_urls = set()
-    unresolved = []  # (title, hint_link_or_None) - no confidently-extracted URL; needs manual add-article
-    for note in notes:
-        url = extract_url(note)
-        if not url:
-            unresolved.append((note.get('title'), hint_link(note)))
-            continue
-        if url in seen_urls:
-            continue
-        seen_urls.add(url)
-        candidates.append((url, note.get('title')))
-
-    if args.limit:
-        candidates = candidates[: args.limit]
-
-    if args.dry_run:
-        for url, title in candidates:
-            print(f"{url}  ({title})")
-        print(f"{len(candidates)} high-confidence candidate URL(s), {len(unresolved)} note(s) need manual review")
-        return 0
-
-    limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_INTERVAL_SEC)
-    counts = {'inserted': 0, 'duplicate': 0, 'fetch_failed': 0, 'missing_fields': 0, 'unresolved': len(unresolved)}
-    failed_urls = []
-
-    db = create_article_db(args.db)
-    try:
-        for url, _title in candidates:
-            limiter.acquire()
-            status, detail = ingest_url(db, url, proxy=args.proxy, interactive=False)
-            counts[status] += 1
-            if status == 'fetch_failed':
-                failed_urls.append(url)
-            print(f"{status:<14} {url}")
-    finally:
-        db.close()
-
-    print(
-        f"\n{len(candidates)} URL(s) processed: "
-        f"inserted={counts['inserted']} duplicate={counts['duplicate']} "
-        f"fetch_failed={counts['fetch_failed']} missing_fields={counts['missing_fields']} "
-        f"unresolved={counts['unresolved']}"
-    )
-
-    if failed_urls:
-        report_path = args.report or 'upnote_import_failures.txt'
-        with open(report_path, 'w') as f:
-            f.write('\n'.join(failed_urls) + '\n')
-        print(f"Wrote {len(failed_urls)} failed URL(s) to {report_path}")
-
-    if unresolved:
-        review_path = args.review_report or 'upnote_import_unresolved.txt'
-        with open(review_path, 'w') as f:
-            for title, hint in unresolved:
-                f.write(f"{title}\t{hint or '(no link found)'}\n")
-        print(f"Wrote {len(unresolved)} unresolved note(s) (no confident URL) to {review_path} for manual add-article")
+        print(
+            f"\n{len(candidates)} URL(s) processed: "
+            f"inserted={counts['inserted']} duplicate={counts['duplicate']} "
+            f"fetch_failed={counts['fetch_failed']} missing_fields={counts['missing_fields']} "
+            f"unresolved={counts['unresolved']} excluded={counts['excluded']}"
+        )
+        action.add_success_fields(counts=counts)
 
     return 0
 
@@ -427,16 +445,13 @@ def build_parser():
     p.add_argument('--source')
     p.set_defaults(func=cmd_add_article)
 
-    p = sub.add_parser('import-upnote', help="backfill articles from UpNote notes tagged #fuck45 or mentioning 'trump'")
+    p = sub.add_parser('import-upnote', help="backfill news articles from UpNote notes tagged #fuck45 or mentioning 'trump'")
     p.add_argument('--db', default='backfill.duckdb', help="staging DB to insert backfilled articles into")
     p.add_argument('--upnote-db', help="path to UpNote's sqlite3 file (default: the standard macOS container path)")
     p.add_argument('--proxy')
     p.add_argument('--limit', type=int)
     p.add_argument('--dry-run', action='store_true')
-    p.add_argument('--report', help="path to write failed URLs to (default: upnote_import_failures.txt)")
-    p.add_argument(
-        '--review-report', help="path to write unresolved notes (no confident URL) to (default: upnote_import_unresolved.txt)"
-    )
+    p.add_argument('--log', default='import_upnote.log', help="path to write structured (eliot) logs to")
     p.set_defaults(func=cmd_import_upnote)
 
     return parser

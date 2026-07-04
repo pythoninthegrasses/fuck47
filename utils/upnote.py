@@ -11,6 +11,7 @@ copy_db_readonly(), so a concurrently-running UpNote instance is never touched.
 import re
 import shutil
 from pathlib import Path
+from urllib.parse import urlparse
 
 DEFAULT_DB_PATH = Path(
     '~/Library/Containers/com.getupnote.desktop/Data/Library/Application Support/UpNote/upnote.sqlite3'
@@ -35,6 +36,14 @@ _LOCAL_ATTACHMENT_HOST = 'localhost'
 # "<headline>\n#tag\n<url>\nBy <author>\n<body>" shape observed in real notes) - only lines that
 # are *just* a URL count; in-body reference/footnote links and author-profile links do not.
 _LINES_TO_SCAN = 6
+
+# The backfill is meant to be news articles, not video/Q&A platforms clipped alongside them.
+EXCLUDED_HOSTS = {'youtube.com', 'www.youtube.com', 'youtu.be', 'quora.com', 'www.quora.com'}
+
+
+def is_excluded_source(url):
+    """True if `url`'s host is a non-article platform (video, Q&A) excluded from the backfill."""
+    return (urlparse(url).hostname or '').lower() in EXCLUDED_HOSTS
 
 
 def copy_db_readonly(db_path, dest_dir):
@@ -70,7 +79,7 @@ def extract_url(note):
     many in-body reference/footnote/author-profile links, and grabbing the first non-attachment
     href produced wrong URLs (an author bio page, a Flickr photo, etc. instead of the article) -
     see backlog task-014 investigation notes. Notes without a standalone URL line return None
-    and are surfaced for manual review (`--report`) rather than guessed at.
+    and are logged for manual review rather than guessed at.
     """
     text = note.get('text') or ''
     for line in text.splitlines()[:_LINES_TO_SCAN]:
