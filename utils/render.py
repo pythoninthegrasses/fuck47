@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import duckdb
+import hashlib
 import json
 import re
 from html import escape
@@ -9,6 +10,34 @@ from pathlib import Path
 ARCHIVE_STORE = 'filtered_articles'
 INDEX_MARKER_BEGIN = '<!-- ARTICLES:BEGIN -->'
 INDEX_MARKER_END = '<!-- ARTICLES:END -->'
+
+SLUG_MAX_LEN = 60
+
+
+def _slugify(title, url=None):
+    """Human-readable, URL-hash-safe slug for an article.
+
+    Lowercases the title, collapses runs of non-alphanumeric characters into a
+    single hyphen, and truncates to SLUG_MAX_LEN at a word boundary. Falls back
+    to a short hash of `url` when the title yields no usable characters (missing,
+    empty, or all punctuation) so every article still gets a stable, non-empty id.
+    """
+    slug = re.sub(r'[^a-z0-9]+', '-', (title or '').lower()).strip('-')
+    if not slug:
+        return hashlib.sha1((url or '').encode()).hexdigest()[:8]
+    if len(slug) > SLUG_MAX_LEN:
+        slug = slug[:SLUG_MAX_LEN].rsplit('-', 1)[0]
+    return slug
+
+
+def _assign_unique_slugs(articles):
+    """Set a `slug` key on each article dict, deduped within this list via -2, -3, ... suffixes."""
+    seen = {}
+    for article in articles:
+        base = _slugify(article.get('title'), url=article.get('url'))
+        count = seen.get(base, 0) + 1
+        seen[base] = count
+        article['slug'] = base if count == 1 else f'{base}-{count}'
 
 
 def _dates_with_snapshots(archive_dir, store=ARCHIVE_STORE):
@@ -112,6 +141,7 @@ def render_index(db_path='filtered_articles.duckdb', index_path='app/index.html'
         return 0
 
     articles = _filtered_articles(db_path, limit)
+    _assign_unique_slugs(articles)
 
     # `</` escaped so untrusted titles cannot close the script tag from inside the JSON.
     payload = json.dumps(articles, ensure_ascii=False).replace('</', '<\\/')

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -8,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from utils.db import ArticleDB
-from utils.render import render_archive, render_index
+from utils.render import _slugify, render_archive, render_index
 
 
 def _article(url, title, published_at='2026-07-01 10:00', source='Example News'):
@@ -224,3 +225,63 @@ class TestRenderIndex:
         html = index_path.read_text()
         assert '<noscript>' in html
         assert '<a href="https://example.com/a"' in html
+
+    def test_injects_slug_per_article(self, tmp_path):
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+        _seed_db(db_path, [_article('https://example.com/a', 'Trump Article A')])
+
+        render_index(str(db_path), str(index_path))
+
+        payload = _poster_payload(index_path)
+        assert payload[0]['slug'] == 'trump-article-a'
+
+    def test_dedupes_slugs_within_payload(self, tmp_path):
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+        _seed_db(
+            db_path,
+            [
+                _article('https://example.com/a', 'Same Title', published_at='2026-07-01 09:00'),
+                _article('https://example.com/b', 'Same Title', published_at='2026-07-01 10:00'),
+            ],
+        )
+
+        render_index(str(db_path), str(index_path))
+
+        payload = _poster_payload(index_path)
+        slugs = sorted(a['slug'] for a in payload)
+        assert slugs == ['same-title', 'same-title-2']
+
+
+def _poster_payload(index_path):
+    html = Path(index_path).read_text()
+    marker = '<script type="application/json" id="poster-articles">'
+    start = html.index(marker) + len(marker)
+    end = html.index('</script>', start)
+    return json.loads(html[start:end])
+
+
+class TestSlugify:
+    def test_basic_title(self):
+        assert _slugify('Tucker Carlson Eyes Third Party') == 'tucker-carlson-eyes-third-party'
+
+    def test_collapses_punctuation_and_whitespace(self):
+        assert _slugify('Trump: "Big, Beautiful" Bill!!') == 'trump-big-beautiful-bill'
+
+    def test_none_title_falls_back_to_url_hash(self):
+        slug = _slugify(None, url='https://example.com/a')
+        assert slug != ''
+        assert slug == _slugify('', url='https://example.com/a')
+
+    def test_empty_title_falls_back_to_url_hash(self):
+        slug = _slugify('!!!', url='https://example.com/a')
+        assert slug != ''
+
+    def test_truncates_long_titles_at_word_boundary(self):
+        title = 'word ' * 30
+        slug = _slugify(title)
+        assert len(slug) <= 60
+        assert not slug.endswith('-')
