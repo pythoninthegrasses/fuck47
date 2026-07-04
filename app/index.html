@@ -343,9 +343,9 @@
       padding: 0;
       width: auto;
     }
-    h1.headline { font-size: clamp(2rem, 9vw, 3.25rem); }
-    .headline-block[data-len="long"] h1.headline { font-size: clamp(1.5rem, 6.5vw, 2.25rem); }
-    .headline-block[data-len="xlong"] h1.headline { font-size: clamp(1.25rem, 5.5vw, 1.75rem); }
+    h1.headline { font-size: clamp(2.25rem, 9vw, 3.25rem); }
+    .headline-block[data-len="long"] h1.headline { font-size: clamp(1.875rem, 6.5vw, 2.25rem); }
+    .headline-block[data-len="xlong"] h1.headline { font-size: clamp(1.5rem, 5.5vw, 1.75rem); }
 
     .story {
       width: auto;
@@ -723,7 +723,7 @@
           return contentHeight - fixedHeight;
         };
 
-        const MIN_PX = 22;
+        const MIN_PX = 47; // reference: postal-service headline fits ~47.4px
         const MAX_PX = 110;
         const fit = (space) => {
           if (space <= 0) return MIN_PX;
