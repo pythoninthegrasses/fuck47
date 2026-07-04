@@ -173,6 +173,26 @@ class TestRenderIndex:
         assert html.count('https://example.com/a') == 2  # once in JSON, once in noscript
         assert html.count('poster-articles') == 1
 
+    def test_smart_quotes_and_embedded_quotes_round_trip_cleanly(self, tmp_path):
+        """Regression guard for task-009: titles/descriptions must inject as literal unicode,
+        not mangled \\u201x escapes or literal backslash-quote sequences."""
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        index_path.write_text(TEMPLATE)
+        title = 'Trump Says Musk Is ‘Off the Rails’ With "America Party" Effort'
+        _seed_db(db_path, [_article('https://example.com/a', title)])
+
+        render_index(str(db_path), str(index_path))
+
+        html = index_path.read_text()
+        assert '‘Off the Rails’' in html
+        assert '\\u2018' not in html and '\\u2019' not in html
+        assert '\\"America Party\\"' in html  # valid JSON escaping of the embedded "
+
+        payload = html.split('id="poster-articles">', 1)[1].split('</script>', 1)[0]
+        articles = json.loads(payload)
+        assert articles[0]['title'] == title
+
     def test_missing_db_leaves_file_unchanged(self, tmp_path):
         index_path = tmp_path / 'index.html'
         index_path.write_text(TEMPLATE)
