@@ -30,15 +30,13 @@ jobs:
       - name: Run news aggregator
         env:
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
         run: uv run main.py
-
-      - name: Render article archive
-        run: uv run python -m utils.render
 
       - name: Check for changes
         id: check_changes
         run: |
-          if [[ -n $(git status -s -- archive/ app/archive/) ]]; then
+          if [[ -n $(git status -s -- archive/ app/archive/ app/index.html) ]]; then
             echo "changes=true" >> $GITHUB_OUTPUT
           else
             echo "changes=false" >> $GITHUB_OUTPUT
@@ -49,7 +47,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add archive/ app/archive/
+          git add archive/ app/archive/ app/index.html
           git commit -m "chore: update article archive [skip ci]"
           git push
 

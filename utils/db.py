@@ -169,11 +169,14 @@ class ArticleDB:
         return removed_count
 
     def clear_old_articles(self, hours):
-        """Clear articles older than specified hours"""
+        """Clear articles older than specified hours, preserving manually-pinned rows."""
         cutoff = datetime.now() - timedelta(hours=hours)
         cutoff_str = cutoff.strftime('%Y-%m-%d %H:%M')
 
-        removed = self.con.execute("DELETE FROM articles WHERE published_at < ? RETURNING url", [cutoff_str]).fetchall()
+        removed = self.con.execute(
+            "DELETE FROM articles WHERE published_at < ? AND manual_review = FALSE RETURNING url",
+            [cutoff_str],
+        ).fetchall()
         self._export_parquet()
 
         print(f"Removed {len(removed)} old articles")

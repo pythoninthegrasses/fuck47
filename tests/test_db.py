@@ -332,6 +332,22 @@ class TestArticleDB:
         remaining_articles = populated_db.get_all_articles()
         assert len(remaining_articles) == 4
 
+    def test_clear_old_articles_preserves_pinned(self, temp_db):
+        """Pinned (manual_review=True) articles must survive clear_old_articles regardless of age.
+
+        Without this, a merge-reviewed backfill of old articles is silently deleted the
+        next time main.py runs clear_old_articles() — before the pin can be re-applied.
+        """
+        old_ts = '2026-07-01 10:00'  # unambiguously old relative to any reasonable hours value
+        temp_db.insert_article({'url': 'https://example.com/old-pinned', 'title': 'Old Pinned', 'published_at': old_ts, 'manual_review': True})
+        temp_db.insert_article({'url': 'https://example.com/old-regular', 'title': 'Old Regular', 'published_at': old_ts})
+
+        removed = temp_db.clear_old_articles(hours=1)
+
+        assert removed == 1
+        assert len(temp_db.search_by_url('https://example.com/old-pinned')) == 1
+        assert len(temp_db.search_by_url('https://example.com/old-regular')) == 0
+
     def test_sort_and_reindex_articles(self, populated_db, sample_articles):
         """Test sorting and reindexing articles."""
         # Sort and reindex

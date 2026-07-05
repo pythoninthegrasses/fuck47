@@ -17,7 +17,7 @@ from eliot import to_file
 from utils.db import create_article_db
 from utils.filter import DJTNewsFilter
 from utils.newsapi import fetch_and_store_articles
-from utils.render import render_index
+from utils.render import render_archive, render_index
 from utils.rss import fetch_rss_articles
 from utils.sentiment import SentimentJudgeError, score_articles
 
@@ -93,6 +93,9 @@ def main():
     # Refresh the static index page from the filtered store; no-op if the store is absent
     injected = render_index()
     print(f"Injected {injected} articles into app/index.html")
+
+    # Regenerate back-issue pages from committed parquet snapshots
+    render_archive(ARCHIVE_DIR)
 
 
 if __name__ == "__main__":

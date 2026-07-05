@@ -689,3 +689,23 @@ class TestMainRendersIndex:
             main()
 
             stub_render_index.assert_called_once_with()
+
+    def test_main_renders_archive_after_index(self, stub_render_index, monkeypatch):
+        """main() should regenerate back-issue pages (render_archive) on every run."""
+        mock_render_archive = Mock(return_value=[])
+        monkeypatch.setattr('main.render_archive', mock_render_archive)
+
+        with (
+            patch('main.fetch_rss_articles') as mock_rss,
+            patch('main.fetch_and_store_articles') as mock_newsapi,
+            patch('main.article_db') as mock_db,
+            patch('main.CACHE_HOURS', 24),
+            patch('main.DJT_FILTER_ENABLED', False),
+        ):
+            mock_newsapi.return_value = []
+            mock_rss.return_value = []
+            mock_db.insert_articles.return_value = 0
+
+            main()
+
+            mock_render_archive.assert_called_once()
