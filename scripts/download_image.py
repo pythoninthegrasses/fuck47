@@ -1,15 +1,13 @@
 #!/usr/bin/env python
 
-"""Download an image, convert to WebP, and record it in attribution.json."""
+"""Download or convert an image to WebP and record it in attribution.json."""
 
 import argparse
 import json
+import requests
 import subprocess
 import tempfile
 from pathlib import Path
-
-import requests
-
 
 DEFAULT_OUT_DIR = Path("app/img/djt")
 DEFAULT_ATTRIBUTION = DEFAULT_OUT_DIR / "attribution.json"
@@ -18,7 +16,9 @@ DEFAULT_QUALITY = 85
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("url", help="Source image URL")
+    source = p.add_mutually_exclusive_group(required=True)
+    source.add_argument("--url", help="Source image URL to download")
+    source.add_argument("--file", type=Path, help="Local image file to convert")
     p.add_argument("--stem", required=True, help="Output filename stem, e.g. gs_arizona-rally_20160319")
     p.add_argument("--outlet", required=True, help="Publisher or source name")
     p.add_argument("--title", required=True, help="Image title or caption")
@@ -65,20 +65,26 @@ def update_attribution(attr_path: Path, entry: dict) -> None:
 def main() -> None:
     args = parse_args()
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = args.out_dir / f"{args.stem}.webp"
 
-    suffix = Path(args.url.split("?")[0]).suffix or ".jpg"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp_path = Path(tmp.name)
-
-    try:
-        print(f"Downloading {args.url}")
-        download(args.url, tmp_path)
-
-        out_path = args.out_dir / f"{args.stem}.webp"
-        convert_to_webp(tmp_path, out_path, args.quality)
+    if args.file:
+        src = args.file.resolve()
+        if not src.exists():
+            raise SystemExit(f"File not found: {src}")
+        print(f"Converting {src}")
+        convert_to_webp(src, out_path, args.quality)
         print(f"Saved {out_path}")
-    finally:
-        tmp_path.unlink(missing_ok=True)
+    else:
+        suffix = Path(args.url.split("?")[0]).suffix or ".jpg"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            print(f"Downloading {args.url}")
+            download(args.url, tmp_path)
+            convert_to_webp(tmp_path, out_path, args.quality)
+            print(f"Saved {out_path}")
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     entry: dict = {
         "file": f"{args.stem}.webp",
