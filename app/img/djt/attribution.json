@@ -42,6 +42,31 @@
       "outlet": "The Washington Post",
       "title": "Profit",
       "date": "2026-07-01"
+    },
+    {
+      "file": "wh_swearing-in_20170120.webp",
+      "outlet": "The White House",
+      "title": "Trump swearing-in ceremony at the U.S. Capitol",
+      "date": "2017-01-20",
+      "license": "Public Domain (U.S. federal government work)",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Donald_Trump_swearing_in_ceremony.jpg"
+    },
+    {
+      "file": "rrl_trump-meets-reagan_19870311.webp",
+      "outlet": "Reagan Presidential Library",
+      "title": "President Reagan greets Donald Trump at a White House reception",
+      "date": "1987-03-11",
+      "license": "Public Domain (U.S. federal government work)",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Trump_Meets_Reagan.jpg"
+    },
+    {
+      "file": "gs_arizona-rally_20160319.webp",
+      "outlet": "Wikimedia Commons",
+      "photographer": "Gage Skidmore",
+      "title": "Trump at a rally in Fountain Hills, Arizona",
+      "date": "2016-03-19",
+      "license": "CC BY-SA 3.0",
+      "source_url": "https://commons.wikimedia.org/wiki/File:Donald_Trump_by_Gage_Skidmore_5.jpg"
     }
   ]
 }
