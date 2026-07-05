@@ -47,6 +47,18 @@ The frontend (`app/index.html`) renders each article as a full-viewport pop-art 
 
 `uv run ./cli.py merge-reviewed --staging-db <staging.duckdb>` is the direct path for content that's already been human-reviewed (e.g. after eyeballing/pruning an `import-upnote` staging DB): it inserts straight into both `articles.duckdb` and `filtered_articles.duckdb`, **bypassing** `main.py`'s automated `DJTNewsFilter` and sentiment-judge gate entirely, then calls `utils/render.py:render_index()` to refresh `app/index.html`, and by default commits and pushes that file (`--no-push` to stop after the local render and push yourself). It also marks each merged row `manual_review = TRUE` via `ArticleDB.mark_manual_review()` (a boolean column on `articles`, migrated into pre-existing stores automatically) — `main.py`'s pipeline fully rebuilds `filtered_articles.duckdb` from scratch on every run (`clear_all_articles` + reinsert only what currently passes the DJT filter and negative-sentiment gate), so without this pinning a manually-approved row would only survive until the next 8-hourly cron run silently dropped it again. `main.py` unions in every `manual_review = TRUE` row from `articles.duckdb` when rebuilding the filtered store, regardless of that run's filter/sentiment outcome.
 
+### Content curation
+
+The site theme is **"All bad news, all the time. Negative DJT coverage, silkscreened daily."** An article belongs only if it is (a) about Trump / his administration and (b) negative or damaging in framing. Wire filler with no Trump connection (obituaries, science, foreign economics, positive market news) must be removed even if it slips through the keyword/sentiment filters.
+
+**Permanent removal** — `uv run ./cli.py -r <value> [<value> ...]` (`--force` skips the confirmation prompt; `--no-push` skips the automatic commit+push so you can craft the commit yourself). Each value can be:
+
+- A full source URL (trailing slash is normalized before comparison)
+- A hyphenated slug as rendered in the poster (e.g. `trump-administration-rolls-back-dozens-of-gun-regulations`) — matched bidirectionally against the computed title slug
+- Any bare substring matched case-insensitively against `url`, `title`, or `source`
+
+The command appends to `exclude_urls.csv`, deletes from both `articles.duckdb` and `filtered_articles.duckdb`, and re-renders `app/index.html`. **Editing the HTML or deleting DB rows is transient** — `main.py` rebuilds `filtered_articles.duckdb` from scratch on every run, so only `exclude_urls.csv` makes an exclusion survive a rebuild. Verify after running `main.py`: no excluded URL should reappear in either store.
+
 ### Making Changes
 
 - Edit `main.py` for code changes
@@ -56,6 +68,38 @@ The frontend (`app/index.html`) renders each article as a full-viewport pop-art 
 - When editing markdown files, use `markdownlint -c .markdownlint.jsonc <file>` to lint the file
 - Edit `app/index.html` directly for content changes
 - Images should be placed in `app/img/` directory
+
+### Local testing
+
+Serve the site with:
+
+```bash
+python -m http.server 8000 --directory app
+```
+
+The `chrome-devtools-axi` skill is installed as a project skill (`npx -y chrome-devtools-axi <command>`). Use it to navigate, take screenshots, run JS, and inspect console/network. Key patterns:
+
+```bash
+npx -y chrome-devtools-axi open http://localhost:8000   # navigate + snapshot
+npx -y chrome-devtools-axi screenshot /tmp/out.png
+npx -y chrome-devtools-axi console --type error         # JS errors only
+npx -y chrome-devtools-axi stop
+```
+
+Inspect Alpine poster state from JS eval:
+
+```js
+const data = Alpine.$data(document.querySelector('[x-data="poster"]'))
+// data.idx       — current article index (0-based)
+// data.articles  — full article array
+// data.timer     — auto-advance interval id (clearInterval to stop)
+```
+
+Verify the rendered batch programmatically:
+
+```js
+JSON.parse(document.getElementById('poster-articles').textContent).length  // article count
+```
 
 ### Deployment
 
