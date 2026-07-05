@@ -537,6 +537,7 @@ def cmd_add(args):
 
     limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_INTERVAL_SEC) if len(urls) > 1 else None
     counts = {'inserted': 0, 'duplicate': 0, 'fetch_failed': 0, 'missing_fields': 0}
+    inserted_articles = []
 
     with create_article_db(args.articles_db, exclude_csv=args.exclude_csv) as db:
         for url in urls:
@@ -548,6 +549,10 @@ def cmd_add(args):
             counts[status] = counts.get(status, 0) + 1
             suffix = f"  ({detail})" if status in {'fetch_failed', 'missing_fields'} else ""
             print(f"{status:<14} {url}{suffix}")
+            if status in ('inserted', 'duplicate'):
+                results = db.search_by_url(url)
+                if results:
+                    inserted_articles.append(results[0])
 
     if len(urls) > 1:
         print(
@@ -555,6 +560,21 @@ def cmd_add(args):
             f"duplicate={counts['duplicate']} fetch_failed={counts['fetch_failed']} "
             f"missing_fields={counts['missing_fields']}"
         )
+
+    if not inserted_articles:
+        return 0
+
+    with create_article_db(args.filtered_db, exclude_csv=args.exclude_csv) as db:
+        db.insert_articles(inserted_articles)
+        for article in inserted_articles:
+            db.mark_manual_review(article['url'])
+
+    injected = render_index(db_path=args.filtered_db, index_path=args.index_path)
+    print(f"Injected {injected} articles into {args.index_path}")
+
+    if args.push:
+        _git_commit_and_push([args.index_path], f"chore(content): manually add {len(inserted_articles)} article(s)")
+
     return 0
 
 
