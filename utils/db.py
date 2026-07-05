@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import csv
 import duckdb
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -21,7 +22,9 @@ ARTICLE_COLUMNS = [
 class ArticleDB:
     """Database manager for article storage and operations, backed by DuckDB with a Parquet export."""
 
-    def __init__(self, db_path='articles.duckdb'):
+    def __init__(self, db_path='articles.duckdb', exclude_csv=None):
+        from config import EXCLUDE_URLS_CSV
+
         self.db_path = db_path
         self.parquet_path = str(Path(db_path).with_suffix('.parquet'))
         self.con = duckdb.connect(db_path)
@@ -41,6 +44,17 @@ class ArticleDB:
         """)
         # Migrates pre-existing stores (created before manual_review existed) in place.
         self.con.execute("ALTER TABLE articles ADD COLUMN IF NOT EXISTS manual_review BOOLEAN DEFAULT FALSE")
+        self.con.execute("""
+            CREATE TABLE IF NOT EXISTS excluded_urls (
+                url VARCHAR PRIMARY KEY,
+                reason VARCHAR,
+                excluded_at VARCHAR
+            )
+        """)
+        # Load exclusions from the CSV so they survive ephemeral DB rebuilds.
+        csv_path = exclude_csv if exclude_csv is not None else EXCLUDE_URLS_CSV
+        if csv_path and Path(csv_path).exists():
+            self.sync_exclusions_from_csv(csv_path)
         self._export_parquet()
 
     def _export_parquet(self):
@@ -52,8 +66,50 @@ class ArticleDB:
         values = [article.get(col) for col in ARTICLE_COLUMNS[1:-1]] + [bool(article.get('manual_review', False))]
         return [url.lower() if url else url] + values
 
+    def sync_exclusions_from_csv(self, path):
+        """Read the exclusion CSV and upsert all rows into the excluded_urls table."""
+        with open(path, newline='') as f:
+            reader = csv.DictReader(f)
+            count = 0
+            for row in reader:
+                url = (row.get('url') or '').lower()
+                if url:
+                    self.con.execute(
+                        "INSERT INTO excluded_urls VALUES (?, ?, ?) ON CONFLICT (url) DO UPDATE SET reason=excluded.reason, excluded_at=excluded.excluded_at",
+                        [url, row.get('reason', ''), row.get('excluded_at', '')],
+                    )
+                    count += 1
+        return count
+
+    def add_exclusion(self, url, reason='', excluded_at=None):
+        """Insert or replace a single exclusion."""
+        url_lower = url.lower() if url else url
+        ts = excluded_at or datetime.now().strftime('%Y-%m-%dT%H:%M')
+        self.con.execute(
+            "INSERT INTO excluded_urls VALUES (?, ?, ?) ON CONFLICT (url) DO UPDATE SET reason=excluded.reason, excluded_at=excluded.excluded_at",
+            [url_lower, reason, ts],
+        )
+
+    def remove_exclusion(self, url):
+        """Remove a URL from the exclusion table."""
+        self.con.execute("DELETE FROM excluded_urls WHERE url = ?", [(url.lower() if url else url)])
+
+    def is_excluded(self, url):
+        """Return True if the URL is in the exclusion table."""
+        url_lower = url.lower() if url else url
+        row = self.con.execute("SELECT 1 FROM excluded_urls WHERE url = ?", [url_lower]).fetchone()
+        return row is not None
+
+    def get_exclusions(self):
+        """Return all exclusion rows as a list of dicts."""
+        rows = self.con.execute("SELECT url, reason, excluded_at FROM excluded_urls").fetchall()
+        return [{'url': r[0], 'reason': r[1], 'excluded_at': r[2]} for r in rows]
+
     def insert_article(self, article):
-        """Insert a single article if it doesn't already exist"""
+        """Insert a single article if it doesn't already exist and is not excluded."""
+        url = (article.get('url') or '').lower()
+        if url and self.is_excluded(url):
+            return False
         result = self.con.execute(
             "INSERT INTO articles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (url) DO NOTHING RETURNING url",
             self._row_values(article),
@@ -167,6 +223,6 @@ class ArticleDB:
         self.close()
 
 
-def create_article_db(db_path='articles.duckdb'):
+def create_article_db(db_path='articles.duckdb', exclude_csv=None):
     """Create and return an ArticleDB instance"""
-    return ArticleDB(db_path)
+    return ArticleDB(db_path, exclude_csv=exclude_csv)

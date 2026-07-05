@@ -24,6 +24,10 @@ TTL = config('CACHE_TTL', default=CACHE_TTL, cast=int)
 # Archive configuration (see backlog task-011)
 ARCHIVE_DIR = config('ARCHIVE_DIR', default="archive")
 
+# Persistent exclusion list — git-committed CSV of URLs that should never be ingested.
+# Reloaded into DuckDB on every ArticleDB open so exclusions survive ephemeral DB rebuilds.
+EXCLUDE_URLS_CSV = config('EXCLUDE_URLS_CSV', default='exclude_urls.csv')
+
 # Rate-limiting configuration (see backlog task-006.03)
 RATE_LIMIT_REQUESTS = config('RATE_LIMIT_REQUESTS', default=100, cast=int)
 RATE_LIMIT_INTERVAL_SEC = config('RATE_LIMIT_INTERVAL_SEC', default=3600, cast=int)

@@ -59,7 +59,7 @@ def _seed_staging(path, urls):
 
 def _args(staging_db_path, articles_db_path, filtered_db_path, index_path, log_path, **overrides):
     argv = [
-        'merge-reviewed',
+        '--merge-reviewed',
         '--staging-db',
         staging_db_path,
         '--articles-db',
@@ -114,7 +114,7 @@ class TestCmdMergeReviewed:
 
         cli.cmd_merge_reviewed(_args(staging_db_path, articles_db_path, filtered_db_path, index_path, log_path))
 
-        mock_push.assert_called_once_with(index_path)
+        mock_push.assert_called_once_with([index_path], 'chore(content): merge manually-reviewed backfill articles')
 
     def test_no_push_flag_skips_git(self, mock_push, staging_db_path, articles_db_path, filtered_db_path, index_path, log_path):
         _seed_staging(staging_db_path, ['https://example.com/a'])

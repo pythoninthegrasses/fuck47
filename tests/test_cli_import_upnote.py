@@ -30,7 +30,7 @@ def log_path(tmp_path):
 
 
 def _args(db_path, upnote_db, log_path=None, **overrides):
-    argv = ['import-upnote', '--db', db_path, '--upnote-db', upnote_db, '--log', log_path or 'import_upnote.log']
+    argv = ['--import-upnote', '--db', db_path, '--upnote-db', upnote_db, '--log', log_path or 'import_upnote.log']
     for flag, value in overrides.items():
         flag_name = f'--{flag.replace("_", "-")}'
         if value is True:

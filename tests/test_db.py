@@ -484,6 +484,130 @@ class TestArchiveSnapshot:
             shutil.rmtree(temp_dir2, ignore_errors=True)
 
 
+class TestExclusions:
+    """Test cases for the excluded_urls table and related ArticleDB methods."""
+
+    @pytest.fixture
+    def csv_path(self, tmp_path):
+        """A fresh exclude_urls.csv with just the header."""
+        import csv as _csv
+
+        path = tmp_path / 'exclude_urls.csv'
+        with path.open('w', newline='') as f:
+            _csv.DictWriter(f, fieldnames=['url', 'reason', 'excluded_at']).writeheader()
+        return str(path)
+
+    @pytest.fixture
+    def db_with_csv(self, tmp_path, csv_path):
+        """An ArticleDB that syncs from a fresh temp CSV."""
+        db = ArticleDB(str(tmp_path / 'test.duckdb'), exclude_csv=csv_path)
+        yield db
+        db.close()
+
+    def test_add_exclusion_and_is_excluded(self, db_with_csv):
+        db_with_csv.add_exclusion('https://example.com/blocked')
+        assert db_with_csv.is_excluded('https://example.com/blocked') is True
+        assert db_with_csv.is_excluded('https://example.com/allowed') is False
+
+    def test_is_excluded_is_case_insensitive(self, db_with_csv):
+        db_with_csv.add_exclusion('https://example.com/blocked')
+        assert db_with_csv.is_excluded('https://EXAMPLE.COM/Blocked') is True
+
+    def test_remove_exclusion_clears_the_block(self, db_with_csv):
+        db_with_csv.add_exclusion('https://example.com/blocked')
+        db_with_csv.remove_exclusion('https://example.com/blocked')
+        assert db_with_csv.is_excluded('https://example.com/blocked') is False
+
+    def test_get_exclusions_returns_all_rows(self, db_with_csv):
+        db_with_csv.add_exclusion('https://example.com/a', reason='spam')
+        db_with_csv.add_exclusion('https://example.com/b')
+        rows = db_with_csv.get_exclusions()
+        assert len(rows) == 2
+        urls = {r['url'] for r in rows}
+        assert urls == {'https://example.com/a', 'https://example.com/b'}
+
+    def test_sync_exclusions_from_csv_loads_on_open(self, tmp_path):
+        """A URL written to the CSV before opening the DB is excluded on open."""
+        import csv as _csv
+
+        csv_path = tmp_path / 'exclude.csv'
+        with csv_path.open('w', newline='') as f:
+            w = _csv.DictWriter(f, fieldnames=['url', 'reason', 'excluded_at'])
+            w.writeheader()
+            w.writerow({'url': 'https://example.com/pre-blocked', 'reason': 'test', 'excluded_at': '2026-01-01 00:00'})
+
+        db = ArticleDB(str(tmp_path / 'test.duckdb'), exclude_csv=str(csv_path))
+        try:
+            assert db.is_excluded('https://example.com/pre-blocked') is True
+        finally:
+            db.close()
+
+    def test_insert_article_skips_excluded_url(self, db_with_csv):
+        db_with_csv.add_exclusion('https://example.com/blocked')
+        result = db_with_csv.insert_article({'url': 'https://example.com/blocked', 'title': 'Blocked'})
+        assert result is False
+        assert db_with_csv.get_all_articles() == []
+
+    def test_insert_article_allows_non_excluded_url(self, db_with_csv):
+        db_with_csv.add_exclusion('https://example.com/blocked')
+        result = db_with_csv.insert_article({'url': 'https://example.com/allowed', 'title': 'Allowed'})
+        assert result is True
+        assert len(db_with_csv.get_all_articles()) == 1
+
+    def test_exclusion_survives_ephemeral_db_reopen(self, tmp_path):
+        """A URL in the CSV blocks insertion in any new DB opened against that CSV."""
+        import csv as _csv
+
+        csv_path = tmp_path / 'exclude.csv'
+        with csv_path.open('w', newline='') as f:
+            w = _csv.DictWriter(f, fieldnames=['url', 'reason', 'excluded_at'])
+            w.writeheader()
+            w.writerow({'url': 'https://example.com/blocked', 'reason': 'test', 'excluded_at': '2026-01-01 00:00'})
+
+        # Simulate a fresh ephemeral DB (e.g., after main.py clears articles.duckdb)
+        db = ArticleDB(str(tmp_path / 'fresh.duckdb'), exclude_csv=str(csv_path))
+        try:
+            assert db.is_excluded('https://example.com/blocked') is True
+            result = db.insert_article({'url': 'https://example.com/blocked', 'title': 'Re-inserted'})
+            assert result is False
+        finally:
+            db.close()
+
+    def test_existing_db_without_excluded_urls_table_is_migrated(self, tmp_path):
+        """Opening a pre-existing DB (created before excluded_urls existed) adds the table."""
+        import csv as _csv
+
+        db_path = str(tmp_path / 'legacy.duckdb')
+        con = duckdb.connect(db_path)
+        con.execute("""
+            CREATE TABLE articles (
+                url VARCHAR PRIMARY KEY,
+                published_at VARCHAR,
+                title VARCHAR,
+                description VARCHAR,
+                source VARCHAR,
+                category VARCHAR,
+                author VARCHAR,
+                djt_relevance_score DOUBLE,
+                sentiment_score DOUBLE,
+                manual_review BOOLEAN DEFAULT FALSE
+            )
+        """)
+        con.execute("INSERT INTO articles (url, title) VALUES ('https://example.com/legacy', 'Legacy')")
+        con.close()
+
+        csv_path = tmp_path / 'empty.csv'
+        with csv_path.open('w', newline='') as f:
+            _csv.DictWriter(f, fieldnames=['url', 'reason', 'excluded_at']).writeheader()
+
+        db = ArticleDB(db_path, exclude_csv=str(csv_path))
+        try:
+            assert db.is_excluded('https://example.com/legacy') is False
+            assert len(db.get_all_articles()) == 1
+        finally:
+            db.close()
+
+
 class TestConvenienceFunctions:
     """Test cases for convenience functions."""
 

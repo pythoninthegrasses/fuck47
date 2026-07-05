@@ -86,14 +86,14 @@ class TestLoadDjtArticles:
 
 class TestCmdArticles:
     def test_prints_recent_articles(self, seeded_db, capsys):
-        args = cli.build_parser().parse_args(['articles', '--db', seeded_db, '--hours', '999999'])
+        args = cli.build_parser().parse_args(['--articles', '--db', seeded_db, '--hours', '999999'])
         cli.cmd_articles(args)
         out = capsys.readouterr().out
         assert 'Trump Faces New Investigation' in out
         assert 'Local Bakery Wins Award' in out
 
     def test_djt_only_flag_excludes_non_djt(self, seeded_db, capsys):
-        args = cli.build_parser().parse_args(['articles', '--db', seeded_db, '--hours', '999999', '--djt-only'])
+        args = cli.build_parser().parse_args(['--articles', '--db', seeded_db, '--hours', '999999', '--djt-only'])
         cli.cmd_articles(args)
         out = capsys.readouterr().out
         assert 'Trump Faces New Investigation' in out
@@ -104,7 +104,7 @@ class TestCmdJudge:
     @patch('cli.score_articles')
     def test_labels_keep_and_drop_by_threshold(self, mock_score, seeded_db, capsys):
         mock_score.return_value = {0: -0.8, 1: 0.5}
-        args = cli.build_parser().parse_args(['judge', '--target', 'local', '--db', seeded_db, '--hours', '999999'])
+        args = cli.build_parser().parse_args(['--judge', '--target', 'local', '--db', seeded_db, '--hours', '999999'])
 
         rc = cli.cmd_judge(args)
 
@@ -118,7 +118,7 @@ class TestCmdJudge:
         mock_score.return_value = {0: -0.8, 1: -0.8}
         args = cli.build_parser().parse_args(
             [
-                'judge',
+                '--judge',
                 '--target',
                 'remote',
                 '--model',
@@ -137,7 +137,7 @@ class TestCmdJudge:
     @patch('cli.score_articles')
     def test_no_model_override_keeps_target_default(self, mock_score, seeded_db, capsys):
         mock_score.return_value = {0: -0.8, 1: -0.8}
-        args = cli.build_parser().parse_args(['judge', '--target', 'remote', '--db', seeded_db, '--hours', '999999'])
+        args = cli.build_parser().parse_args(['--judge', '--target', 'remote', '--db', seeded_db, '--hours', '999999'])
 
         cli.cmd_judge(args)
 
@@ -146,7 +146,7 @@ class TestCmdJudge:
     @patch('cli.score_articles')
     def test_judge_call_failure_returns_nonzero(self, mock_score, seeded_db, capsys):
         mock_score.side_effect = SentimentJudgeError("boom")
-        args = cli.build_parser().parse_args(['judge', '--target', 'remote', '--db', seeded_db, '--hours', '999999'])
+        args = cli.build_parser().parse_args(['--judge', '--target', 'remote', '--db', seeded_db, '--hours', '999999'])
 
         rc = cli.cmd_judge(args)
 
@@ -154,7 +154,7 @@ class TestCmdJudge:
         assert 'boom' in capsys.readouterr().out
 
     def test_no_articles_in_range_is_a_noop(self, seeded_db, capsys):
-        args = cli.build_parser().parse_args(['judge', '--target', 'local', '--db', seeded_db, '--hours', '0'])
+        args = cli.build_parser().parse_args(['--judge', '--target', 'local', '--db', seeded_db, '--hours', '0'])
 
         rc = cli.cmd_judge(args)
 
@@ -174,7 +174,7 @@ class TestCmdCompare:
             )
 
         mock_score.side_effect = fake_score
-        args = cli.build_parser().parse_args(['compare', '--db', seeded_db, '--hours', '999999'])
+        args = cli.build_parser().parse_args(['--compare', '--db', seeded_db, '--hours', '999999'])
 
         rc = cli.cmd_compare(args)
 
@@ -190,7 +190,7 @@ class TestCmdCompare:
             return {i: 0.1 for i in range(len(articles))}
 
         mock_score.side_effect = fake_score
-        args = cli.build_parser().parse_args(['compare', '--db', seeded_db, '--hours', '999999'])
+        args = cli.build_parser().parse_args(['--compare', '--db', seeded_db, '--hours', '999999'])
 
         rc = cli.cmd_compare(args)
 
@@ -202,7 +202,7 @@ class TestCmdHealth:
     @patch('cli.score_articles')
     def test_success_reports_ok(self, mock_score, capsys):
         mock_score.return_value = {0: -0.5, 1: 0.5}
-        args = cli.build_parser().parse_args(['health', '--target', 'remote'])
+        args = cli.build_parser().parse_args(['--health', '--target', 'remote'])
 
         rc = cli.cmd_health(args)
 
@@ -213,7 +213,7 @@ class TestCmdHealth:
     def test_failure_reports_error(self, mock_score, capsys):
         mock_score.side_effect = SentimentJudgeError("no route to host")
 
-        args = cli.build_parser().parse_args(['health', '--target', 'remote'])
+        args = cli.build_parser().parse_args(['--health', '--target', 'remote'])
         rc = cli.cmd_health(args)
 
         assert rc == 1
@@ -222,7 +222,9 @@ class TestCmdHealth:
     @patch('cli.score_articles')
     def test_model_override_reaches_score_articles(self, mock_score, capsys):
         mock_score.return_value = {0: -0.5, 1: 0.5}
-        args = cli.build_parser().parse_args(['health', '--target', 'remote', '--model', 'accounts/fireworks/models/minimax-m3'])
+        args = cli.build_parser().parse_args(
+            ['--health', '--target', 'remote', '--model', 'accounts/fireworks/models/minimax-m3']
+        )
 
         cli.cmd_health(args)
 
@@ -237,7 +239,7 @@ class TestCmdHealth:
         status_response.json.return_value = {'models': [{'id': cli.TARGETS['local']['model'], 'loaded': True}]}
         mock_get.return_value = status_response
 
-        args = cli.build_parser().parse_args(['health', '--target', 'local'])
+        args = cli.build_parser().parse_args(['--health', '--target', 'local'])
         rc = cli.cmd_health(args)
 
         assert rc == 0

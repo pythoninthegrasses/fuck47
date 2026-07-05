@@ -1,18 +1,21 @@
 #!/usr/bin/env python
 
 """
-CLI for exploring the article store and running the LLM sentiment judge against
-local (oMLX) and remote (Fireworks) targets. See docs/ai.md.
+CLI for the article store: CRUD, feed fetching, and LLM sentiment judging.
 
 Examples:
-    uv run ./cli.py health --target local
-    uv run ./cli.py fetch --hours 8
-    uv run ./cli.py articles --hours 8 --djt-only
-    uv run ./cli.py judge --target local --hours 8
-    uv run ./cli.py compare --hours 8
+    uv run ./cli.py --add https://www.axios.com/2023/03/27/labor-board-says-non-disparagement-clauses-are-unlawful
+    uv run ./cli.py -A URL1 URL2 --file urls.csv
+    uv run ./cli.py --remove "labor board non-disparagement"
+    uv run ./cli.py -r https://fuckfortyseven.org/#labor-board-says-non-disparagement-clauses-are-unlawful
+    uv run ./cli.py --articles --hours 8 --djt-only
+    uv run ./cli.py --fetch --hours 8
+    uv run ./cli.py --judge --target local --hours 8
+    uv run ./cli.py --compare --hours 8
 """
 
 import argparse
+import csv
 import requests
 import sys
 import time
@@ -20,6 +23,7 @@ from config import (
     ARCHIVE_DIR,
     CACHE_HOURS,
     DJT_FILTER_MIN_SCORE,
+    EXCLUDE_URLS_CSV,
     LLM_API_KEY,
     LLM_BASE_URL,
     LLM_MODEL,
@@ -32,15 +36,19 @@ from config import (
 )
 from datetime import datetime, timedelta
 from eliot import log_message, start_action, to_file
+from pathlib import Path
 from urllib.parse import urlparse
 from utils.db import create_article_db
 from utils.filter import DJTNewsFilter
 from utils.newsapi import fetch_and_store_articles
 from utils.ratelimit import RateLimiter
-from utils.render import render_index
+from utils.render import _slugify, render_index
 from utils.rss import fetch_rss_articles
 from utils.scrape import ScrapeError, extract_metadata, fetch_html
 from utils.sentiment import SentimentJudgeError, score_articles
+
+# Hostname of the live site — used to tell site-anchor URLs apart from source URLs.
+_SITE_HOST = 'fuckfortyseven.org'
 
 # Named judge targets. 'local' points at an oMLX (or other local OpenAI-compatible) server;
 # temperature=0 asks for deterministic scoring since local runs are meant to be reproducible.
@@ -89,16 +97,10 @@ def _recent_articles(db, hours):
 
 def _load_djt_articles(db_path, hours, limit=None):
     """Load DJT-related articles from the last `hours`, same filter main.py applies before judging."""
-    db = create_article_db(db_path)
-    try:
+    with create_article_db(db_path) as db:
         articles = _recent_articles(db, hours)
-    finally:
-        db.close()
-
     djt_articles = DJTNewsFilter(min_score=DJT_FILTER_MIN_SCORE).filter_articles(articles)
-    if limit:
-        djt_articles = djt_articles[:limit]
-    return djt_articles
+    return djt_articles[:limit] if limit else djt_articles
 
 
 def cmd_health(args):
@@ -133,48 +135,35 @@ def cmd_health(args):
 
 def cmd_fetch(args):
     """Populate the article store: prune stale rows, fetch NewsAPI + RSS (mirrors main.py, no sentiment gate)."""
-    db = create_article_db(args.db)
-    try:
+    with create_article_db(args.db or 'articles.duckdb') as db:
         db.clear_old_articles(hours=args.hours)
-
-        articles = fetch_and_store_articles(db)
-        print(f"Fetched and stored {len(articles)} articles from NewsAPI")
-
-        rss_articles = fetch_rss_articles()
-        stored = db.insert_articles(rss_articles)
-        print(f"Stored {stored} new articles from RSS feeds")
-
+        print(f"Fetched and stored {len(fetch_and_store_articles(db))} articles from NewsAPI")
+        print(f"Stored {db.insert_articles(fetch_rss_articles())} new articles from RSS feeds")
         db.sort_and_reindex_articles()
-    finally:
-        db.close()
     return 0
 
 
 def cmd_articles(args):
     """List articles from the store, optionally restricted to DJT-related ones."""
-    db = create_article_db(args.db)
-    try:
+    with create_article_db(args.db or 'articles.duckdb') as db:
         articles = _recent_articles(db, args.hours)
-    finally:
-        db.close()
-
     if args.djt_only:
         articles = DJTNewsFilter(min_score=DJT_FILTER_MIN_SCORE).filter_articles(articles)
     if args.limit:
         articles = articles[: args.limit]
-
     suffix = " (DJT-only)" if args.djt_only else ""
     print(f"{len(articles)} article(s) in the last {args.hours}h{suffix}")
     for a in articles:
         score = a.get('djt_relevance_score')
-        score_str = f"{score:.1f}" if score is not None else "-"
-        print(f"{a['published_at']}  {score_str:>5}  {a['source']:<20}  {a['title']}")
+        print(f"{a['published_at']}  {f'{score:.1f}' if score is not None else '-':>5}  {a['source']:<20}  {a['title']}")
     return 0
 
 
 def cmd_judge(args):
     """Score current DJT-related articles against one target and show the keep/drop gate outcome."""
-    articles = _load_djt_articles(args.db, args.hours, args.limit)
+    if not args.target:
+        raise SystemExit("--judge requires --target; choose from " + str(sorted(TARGETS)))
+    articles = _load_djt_articles(args.db or 'articles.duckdb', args.hours, args.limit)
     if not articles:
         print("No DJT-related articles in range; nothing to judge")
         return 0
@@ -197,7 +186,7 @@ def cmd_judge(args):
 
 def cmd_compare(args):
     """Score the same DJT-related articles against both targets and report deltas/agreement."""
-    articles = _load_djt_articles(args.db, args.hours, args.limit)
+    articles = _load_djt_articles(args.db or 'articles.duckdb', args.hours, args.limit)
     if not articles:
         print("No DJT-related articles in range; nothing to compare")
         return 0
@@ -268,43 +257,11 @@ def ingest_url(db, url, *, proxy=None, title=None, description=None, date=None, 
     if missing:
         return 'missing_fields', ', '.join(missing)
 
-    resolved_source = source or urlparse(url).hostname
-    inserted = db.insert_article(
-        {
-            'url': url,
-            'title': fields['title'],
-            'description': fields['description'],
-            'published_at': fields['published_at'],
-            'source': resolved_source,
-        }
-    )
+    inserted = db.insert_article({'url': url, 'source': source or urlparse(url).hostname, **fields})
 
     if inserted:
         return 'inserted', fields['title']
     return 'duplicate', None
-
-
-def cmd_add_article(args):
-    """Manually ingest a single article by URL: fetch, extract metadata, prompt for gaps, insert."""
-    db = create_article_db(args.db)
-    try:
-        status, detail = ingest_url(
-            db, args.url, proxy=args.proxy, title=args.title, description=args.description, date=args.date, source=args.source
-        )
-    finally:
-        db.close()
-
-    if status == 'fetch_failed':
-        print(f"Fetch failed: {detail}")
-        return 1
-    if status == 'missing_fields':
-        print(f"Missing required field(s), stdin is not interactive: {detail}")
-        return 1
-    if status == 'inserted':
-        print(f"Inserted: {detail} ({args.url})")
-        return 0
-    print(f"Duplicate (already in store): {args.url}")
-    return 0
 
 
 _eliot_log_configured = False
@@ -325,9 +282,10 @@ def cmd_import_upnote(args):
     import tempfile
     from utils.upnote import DEFAULT_DB_PATH, copy_db_readonly, extract_url, hint_link, is_excluded_source, iter_matching_notes
 
-    _configure_eliot_logging(args.log)
+    _configure_eliot_logging(args.log or 'import_upnote.log')
 
-    with start_action(action_type="import_upnote", db=args.db, dry_run=args.dry_run) as action:
+    db_path = args.db or 'backfill.duckdb'
+    with start_action(action_type="import_upnote", db=db_path, dry_run=args.dry_run) as action:
         src_db = args.upnote_db or DEFAULT_DB_PATH
         with tempfile.TemporaryDirectory() as tmp:
             copied = copy_db_readonly(src_db, tmp)
@@ -378,16 +336,13 @@ def cmd_import_upnote(args):
             'excluded': excluded_count,
         }
 
-        db = create_article_db(args.db)
-        try:
+        with create_article_db(db_path) as db:
             for url, _title in candidates:
                 limiter.acquire()
                 status, detail = ingest_url(db, url, proxy=args.proxy, interactive=False)
                 counts[status] += 1
                 log_message(message_type="import_upnote_result", status=status, url=url, detail=detail)
                 print(f"{status:<14} {url}")
-        finally:
-            db.close()
 
         print(
             f"\n{len(candidates)} URL(s) processed: "
@@ -400,19 +355,24 @@ def cmd_import_upnote(args):
     return 0
 
 
-def _git_commit_and_push(index_path):
-    """Commit and push `index_path` if it has changes; no-op if the working tree is already clean."""
+def _git_commit_and_push(paths, message):
+    """Commit and push `paths` if any have changes; no-op if the working tree is already clean.
+
+    `paths` is a list of file paths to stage and commit together.
+    """
     import subprocess
 
-    status = subprocess.run(['git', 'status', '--porcelain', '--', index_path], capture_output=True, text=True, check=True)
+    paths = [paths] if isinstance(paths, str) else list(paths)
+    status = subprocess.run(['git', 'status', '--porcelain', '--'] + paths, capture_output=True, text=True, check=True)
     if not status.stdout.strip():
-        print(f"No changes to {index_path}; skipping commit/push")
+        print("No changes to commit; skipping commit/push")
         return
 
-    subprocess.run(['git', 'add', index_path], check=True)
-    subprocess.run(['git', 'commit', '-m', 'chore(content): merge manually-reviewed backfill articles'], check=True)
+    for p in paths:
+        subprocess.run(['git', 'add', p], check=True)
+    subprocess.run(['git', 'commit', '-m', message], check=True)
     subprocess.run(['git', 'push'], check=True)
-    print(f"Committed and pushed {index_path}")
+    print(f"Committed and pushed {', '.join(paths)}")
 
 
 def cmd_merge_reviewed(args):
@@ -424,45 +384,29 @@ def cmd_merge_reviewed(args):
     (the store render_index() actually reads), then re-renders app/index.html and - unless
     --no-push is given - commits and pushes it, triggering the GitHub Pages deploy.
     """
-    _configure_eliot_logging(args.log)
+    _configure_eliot_logging(args.log or 'merge_reviewed.log')
 
     with start_action(action_type="merge_reviewed", staging_db=args.staging_db) as action:
-        staging_db = create_article_db(args.staging_db)
-        try:
+        with create_article_db(args.staging_db) as staging_db:
             reviewed = staging_db.get_all_articles()
-        finally:
-            staging_db.close()
 
         if not reviewed:
             print("No articles in staging DB; nothing to merge")
             return 0
 
         run_at = datetime.now()
-
         urls = [a['url'] for a in reviewed]
-
-        articles_db = create_article_db(args.articles_db)
-        try:
-            articles_inserted = articles_db.insert_articles(reviewed)
-            for url in urls:
-                articles_db.mark_manual_review(url)
-            articles_db.sort_and_reindex_articles()
-            articles_db.archive_snapshot(ARCHIVE_DIR, run_at)
-        finally:
-            articles_db.close()
-
-        filtered_db = create_article_db(args.filtered_db)
-        try:
-            filtered_inserted = filtered_db.insert_articles(reviewed)
-            for url in urls:
-                filtered_db.mark_manual_review(url)
-            filtered_db.sort_and_reindex_articles()
-            filtered_db.archive_snapshot(ARCHIVE_DIR, run_at)
-        finally:
-            filtered_db.close()
+        inserted = []
+        for db_path in (args.articles_db, args.filtered_db):
+            with create_article_db(db_path) as db:
+                inserted.append(db.insert_articles(reviewed))
+                for url in urls:
+                    db.mark_manual_review(url)
+                db.sort_and_reindex_articles()
+                db.archive_snapshot(ARCHIVE_DIR, run_at)
+        articles_inserted, filtered_inserted = inserted
 
         injected = render_index(db_path=args.filtered_db, index_path=args.index_path)
-
         print(
             f"Merged {len(reviewed)} reviewed article(s): "
             f"{articles_inserted} new in {args.articles_db}, {filtered_inserted} new in {args.filtered_db}"
@@ -471,85 +415,288 @@ def cmd_merge_reviewed(args):
         action.add_success_fields(articles_inserted=articles_inserted, filtered_inserted=filtered_inserted, injected=injected)
 
         if args.push:
-            _git_commit_and_push(args.index_path)
+            _git_commit_and_push([args.index_path], 'chore(content): merge manually-reviewed backfill articles')
+
+    return 0
+
+
+def _read_exclude_csv(path):
+    """Return all rows from the exclusion CSV as a list of dicts; empty list if absent."""
+    path = Path(path)
+    if not path.exists():
+        return []
+    with path.open(newline='') as f:
+        return list(csv.DictReader(f))
+
+
+def _write_exclude_csv(path, rows):
+    path = Path(path)
+    with path.open('w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=['url', 'reason', 'excluded_at'])
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _add_to_exclude_csv(path, urls, reason=None):
+    """Append URLs not already in the CSV; returns count added."""
+    rows = _read_exclude_csv(path)
+    existing = {r['url'] for r in rows}
+    now = datetime.now().strftime('%Y-%m-%dT%H:%M')
+    added = 0
+    for url in urls:
+        url_lower = url.lower()
+        if url_lower not in existing:
+            rows.append({'url': url_lower, 'reason': reason or '', 'excluded_at': now})
+            existing.add(url_lower)
+            added += 1
+    _write_exclude_csv(path, rows)
+    return added
+
+
+def _remove_from_exclude_csv(path, urls):
+    """Remove URLs from the CSV; returns count removed."""
+    rows = _read_exclude_csv(path)
+    urls_lower = {u.lower() for u in urls}
+    before = len(rows)
+    rows = [r for r in rows if r['url'] not in urls_lower]
+    _write_exclude_csv(path, rows)
+    return before - len(rows)
+
+
+def _read_url_file(path):
+    """Read URLs from a CSV file or stdin ('-'); expects a 'url' column."""
+    import io
+
+    content = sys.stdin.read() if path == '-' else Path(path).read_text()
+    return [row['url'] for row in csv.DictReader(io.StringIO(content)) if row.get('url', '').strip()]
+
+
+def _resolve_to_source_urls(values, articles):
+    """Resolve VALUES to matching article dicts and pre-emptive source URLs.
+
+    Each VALUE can be:
+    - An external source URL  → exact match; pre-emptive block if not in the DB.
+    - A site anchor URL       → fragment matched against each article's slugified title.
+    - A bare substring        → case-insensitive search over url/title/source.
+
+    Returns:
+        matched    - dict mapping source URL → article dict
+        preemptive - set of external URLs to block not currently in the DB
+    """
+    matched = {}
+    preemptive = set()
+
+    for value in values:
+        parsed = urlparse(value)
+        is_url = parsed.scheme in ('http', 'https')
+
+        if is_url and parsed.hostname != _SITE_HOST:
+            url_lower = value.lower().split('#')[0].rstrip('/')
+            found = [a for a in articles if a['url'] == url_lower]
+            if found:
+                for a in found:
+                    matched[a['url']] = a
+            else:
+                preemptive.add(url_lower)
+
+        elif is_url and parsed.hostname == _SITE_HOST:
+            fragment = parsed.fragment
+            if not fragment:
+                print(f"WARNING: site URL has no anchor, skipping: {value}")
+                continue
+            for a in articles:
+                base_slug = _slugify(a.get('title', ''), url=a.get('url'))
+                if fragment == base_slug or fragment.startswith(base_slug + '-'):
+                    matched[a['url']] = a
+
+        else:
+            val_lower = value.lower()
+            found_any = False
+            for a in articles:
+                if (
+                    val_lower in (a.get('url') or '').lower()
+                    or val_lower in (a.get('title') or '').lower()
+                    or val_lower in (a.get('source') or '').lower()
+                ):
+                    matched[a['url']] = a
+                    found_any = True
+            if not found_any:
+                print(f"WARNING: no articles matched: {value!r}")
+
+    return matched, preemptive
+
+
+def cmd_add(args):
+    """Batch-insert articles by URL; un-excludes any URL that was previously blocked."""
+    urls = list(args.add or [])
+    if args.file:
+        urls += _read_url_file(args.file)
+    if not urls:
+        print("No URLs provided")
+        return 1
+
+    limiter = RateLimiter(RATE_LIMIT_REQUESTS, RATE_LIMIT_INTERVAL_SEC) if len(urls) > 1 else None
+    counts = {'inserted': 0, 'duplicate': 0, 'fetch_failed': 0, 'missing_fields': 0}
+
+    with create_article_db(args.articles_db, exclude_csv=args.exclude_csv) as db:
+        for url in urls:
+            if limiter:
+                limiter.acquire()
+            _remove_from_exclude_csv(args.exclude_csv, [url])
+            db.remove_exclusion(url)
+            status, detail = ingest_url(db, url, proxy=args.proxy, interactive=False)
+            counts[status] = counts.get(status, 0) + 1
+            suffix = f"  ({detail})" if status in {'fetch_failed', 'missing_fields'} else ""
+            print(f"{status:<14} {url}{suffix}")
+
+    if len(urls) > 1:
+        print(
+            f"\n{len(urls)} URL(s) processed: inserted={counts['inserted']} "
+            f"duplicate={counts['duplicate']} fetch_failed={counts['fetch_failed']} "
+            f"missing_fields={counts['missing_fields']}"
+        )
+    return 0
+
+
+def cmd_remove(args):
+    """Remove articles from both stores, block them in the exclusion CSV, and re-render."""
+    values = list(args.remove or [])
+    if args.file:
+        values += _read_url_file(args.file)
+    if not values:
+        print("No values provided")
+        return 1
+
+    with create_article_db(args.articles_db, exclude_csv=args.exclude_csv) as db:
+        articles = db.get_all_articles()
+
+    matched, preemptive = _resolve_to_source_urls(values, articles)
+
+    if not matched and not preemptive:
+        print("Nothing to remove")
+        return 0
+
+    preview_items = list(matched.values()) + [
+        {'url': u, 'title': '(pre-emptive block — not currently in DB)', 'source': ''} for u in preemptive
+    ]
+    print(f"{'#':>3}  {'title':<52}  url")
+    for i, item in enumerate(preview_items):
+        print(f"{i:>3}  {(item.get('title') or '')[:52]:<52}  {item['url']}")
+    print(f"\n{len(preview_items)} article(s) will be excluded and removed.")
+
+    if not args.force:
+        if not sys.stdin.isatty():
+            print("stdin is not interactive; use --force to skip confirmation")
+            return 1
+        answer = input("Proceed? [y/N] ").strip().lower()
+        if answer != 'y':
+            print("Aborted")
+            return 0
+
+    all_urls = set(matched.keys()) | preemptive
+    added_to_csv = _add_to_exclude_csv(args.exclude_csv, all_urls, reason=args.reason)
+
+    run_at = datetime.now()
+    for db_path in (args.articles_db, args.filtered_db):
+        with create_article_db(db_path, exclude_csv=args.exclude_csv) as db:
+            for url in all_urls:
+                db.remove_by_url(url)
+            db.archive_snapshot(ARCHIVE_DIR, run_at)
+
+    injected = render_index(db_path=args.filtered_db, index_path=args.index_path)
+    print(
+        f"Removed {len(all_urls)} article(s); "
+        f"added {added_to_csv} URL(s) to {args.exclude_csv}; "
+        f"injected {injected} into {args.index_path}"
+    )
+
+    if args.push:
+        n = len(all_urls)
+        _git_commit_and_push(
+            [args.exclude_csv, args.index_path],
+            f"chore(content): exclude {n} article(s)",
+        )
 
     return 0
 
 
 def build_parser():
     parser = argparse.ArgumentParser(prog='cli.py', description=__doc__.strip().splitlines()[0])
-    sub = parser.add_subparsers(dest='command', required=True)
 
-    p = sub.add_parser('health', help="smoke-test a judge target")
-    p.add_argument('--target', choices=sorted(TARGETS), default='local')
-    p.add_argument('--model', help="override the resolved target's model")
-    p.set_defaults(func=cmd_health)
-
-    p = sub.add_parser('fetch', help="fetch NewsAPI + RSS articles into the store")
-    p.add_argument('--hours', type=int, default=CACHE_HOURS)
-    p.add_argument('--db', default='articles.duckdb')
-    p.set_defaults(func=cmd_fetch)
-
-    p = sub.add_parser('articles', help="list articles currently in the store")
-    p.add_argument('--hours', type=int, default=CACHE_HOURS)
-    p.add_argument('--djt-only', action='store_true')
-    p.add_argument('--limit', type=int)
-    p.add_argument('--db', default='articles.duckdb')
-    p.set_defaults(func=cmd_articles)
-
-    p = sub.add_parser('judge', help="score current DJT articles against one target")
-    p.add_argument('--target', choices=sorted(TARGETS), required=True)
-    p.add_argument('--model', help="override the resolved target's model")
-    p.add_argument('--hours', type=int, default=CACHE_HOURS)
-    p.add_argument('--limit', type=int)
-    p.add_argument('--timeout', type=float, default=120)
-    p.add_argument('--db', default='articles.duckdb')
-    p.set_defaults(func=cmd_judge)
-
-    p = sub.add_parser('compare', help="score current DJT articles against both targets side by side")
-    p.add_argument('--hours', type=int, default=CACHE_HOURS)
-    p.add_argument('--limit', type=int)
-    p.add_argument('--timeout', type=float, default=120)
-    p.add_argument('--db', default='articles.duckdb')
-    p.set_defaults(func=cmd_compare)
-
-    p = sub.add_parser('add-article', help="manually ingest an article by URL")
-    p.add_argument('url')
-    p.add_argument('--proxy')
-    p.add_argument('--db', default='articles.duckdb')
-    p.add_argument('--title')
-    p.add_argument('--description')
-    p.add_argument('--date', dest='date')
-    p.add_argument('--source')
-    p.set_defaults(func=cmd_add_article)
-
-    p = sub.add_parser('import-upnote', help="backfill news articles from UpNote notes tagged #fuck45 or mentioning 'trump'")
-    p.add_argument('--db', default='backfill.duckdb', help="staging DB to insert backfilled articles into")
-    p.add_argument('--upnote-db', help="path to UpNote's sqlite3 file (default: the standard macOS container path)")
-    p.add_argument('--proxy')
-    p.add_argument('--limit', type=int)
-    p.add_argument('--dry-run', action='store_true')
-    p.add_argument('--log', default='import_upnote.log', help="path to write structured (eliot) logs to")
-    p.set_defaults(func=cmd_import_upnote)
-
-    p = sub.add_parser(
-        'merge-reviewed',
+    cmd = parser.add_mutually_exclusive_group(required=True)
+    cmd.add_argument('--health', action='store_true', help="smoke-test a judge target")
+    cmd.add_argument('-f', '--fetch', action='store_true', help="fetch NewsAPI + RSS articles into the store")
+    cmd.add_argument('-a', '--articles', action='store_true', help="list articles currently in the store")
+    cmd.add_argument('-j', '--judge', action='store_true', help="score current DJT articles against one target")
+    cmd.add_argument('-c', '--compare', action='store_true', help="score current DJT articles against both targets side by side")
+    cmd.add_argument(
+        '-A', '--add', nargs='*', metavar='URL', help="batch-add articles by URL; un-excludes previously blocked URLs"
+    )
+    cmd.add_argument(
+        '-r',
+        '--remove',
+        nargs='*',
+        metavar='VALUE',
+        help="remove articles by URL, site anchor, or substring; adds to exclude_urls.csv",
+    )
+    cmd.add_argument(
+        '-i',
+        '--import-upnote',
+        action='store_true',
+        dest='import_upnote',
+        help="backfill news articles from UpNote notes tagged #fuck45 or mentioning 'trump'",
+    )
+    cmd.add_argument(
+        '-m',
+        '--merge-reviewed',
+        action='store_true',
+        dest='merge_reviewed',
         help="merge manually-reviewed staged articles into the live stores, bypassing the DJT filter and sentiment gate",
     )
-    p.add_argument('--staging-db', default='backfill.duckdb', help="DB of manually-reviewed articles to merge")
-    p.add_argument('--articles-db', default='articles.duckdb')
-    p.add_argument('--filtered-db', default='filtered_articles.duckdb')
-    p.add_argument('--index-path', default='app/index.html')
-    p.add_argument('--log', default='merge_reviewed.log', help="path to write structured (eliot) logs to")
-    p.add_argument('--no-push', dest='push', action='store_false', help="skip git commit/push; leave local files updated only")
-    p.set_defaults(func=cmd_merge_reviewed, push=True)
+
+    parser.add_argument('--hours', type=int, default=CACHE_HOURS)
+    parser.add_argument('--target', choices=sorted(TARGETS))
+    parser.add_argument('--model', help="override the resolved target's model")
+    parser.add_argument('--limit', type=int)
+    parser.add_argument('--timeout', type=float, default=120)
+    parser.add_argument('--djt-only', action='store_true')
+    parser.add_argument('--db', default=None)
+    parser.add_argument('--articles-db', default='articles.duckdb')
+    parser.add_argument('--filtered-db', default='filtered_articles.duckdb')
+    parser.add_argument('--staging-db', default='backfill.duckdb')
+    parser.add_argument('--index-path', default='app/index.html')
+    parser.add_argument('--upnote-db', help="path to UpNote's sqlite3 file (default: the standard macOS container path)")
+    parser.add_argument('--proxy')
+    parser.add_argument('--file', metavar='PATH', help="read URLs/values from a CSV file (- for stdin)")
+    parser.add_argument('--exclude-csv', default=EXCLUDE_URLS_CSV)
+    parser.add_argument('--reason', help="reason string recorded in exclude_urls.csv")
+    parser.add_argument('--force', action='store_true', help="skip removal confirmation prompt")
+    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--log', default=None)
+    parser.add_argument('--no-push', dest='push', action='store_false', help="skip git commit/push")
+    parser.set_defaults(push=True)
 
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
-    return args.func(args) or 0
+    fn = next(
+        fn
+        for active, fn in [
+            (args.health, cmd_health),
+            (args.fetch, cmd_fetch),
+            (args.articles, cmd_articles),
+            (args.judge, cmd_judge),
+            (args.compare, cmd_compare),
+            (args.add is not None, cmd_add),
+            (args.remove is not None, cmd_remove),
+            (args.import_upnote, cmd_import_upnote),
+            (args.merge_reviewed, cmd_merge_reviewed),
+        ]
+        if active
+    )
+    return fn(args) or 0
 
 
 if __name__ == '__main__':
