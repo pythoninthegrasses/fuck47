@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "chrome-devtools-axi": {
+      "source": "kunchenguid/chrome-devtools-axi",
+      "sourceType": "github",
+      "skillPath": "skills/chrome-devtools-axi/SKILL.md",
+      "computedHash": "824e8e72ae7be58b79f2790ae0131b1cd6f555dd5fd2974db6e4e270c35d28c1"
+    }
+  }
+}
