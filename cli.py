@@ -475,9 +475,10 @@ def _resolve_to_source_urls(values, articles):
     """Resolve VALUES to matching article dicts and pre-emptive source URLs.
 
     Each VALUE can be:
-    - An external source URL  → exact match; pre-emptive block if not in the DB.
+    - An external source URL  → normalized URL match, then URL substring fallback;
+                                pre-emptive block only if nothing in the DB matches.
     - A site anchor URL       → fragment matched against each article's slugified title.
-    - A bare substring        → case-insensitive search over url/title/source.
+    - A bare substring        → case-insensitive search over url/title/source/slug.
 
     Returns:
         matched    - dict mapping source URL → article dict
@@ -492,7 +493,9 @@ def _resolve_to_source_urls(values, articles):
 
         if is_url and parsed.hostname != _SITE_HOST:
             url_lower = value.lower().split('#')[0].rstrip('/')
-            found = [a for a in articles if a['url'] == url_lower]
+            found = [a for a in articles if (a.get('url') or '').rstrip('/') == url_lower]
+            if not found:
+                found = [a for a in articles if url_lower in (a.get('url') or '').lower()]
             if found:
                 for a in found:
                     matched[a['url']] = a
@@ -513,10 +516,13 @@ def _resolve_to_source_urls(values, articles):
             val_lower = value.lower()
             found_any = False
             for a in articles:
+                slug = _slugify(a.get('title', ''), url=a.get('url'))
                 if (
                     val_lower in (a.get('url') or '').lower()
                     or val_lower in (a.get('title') or '').lower()
                     or val_lower in (a.get('source') or '').lower()
+                    or val_lower in slug
+                    or slug in val_lower
                 ):
                     matched[a['url']] = a
                     found_any = True

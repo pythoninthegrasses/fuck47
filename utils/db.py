@@ -72,7 +72,7 @@ class ArticleDB:
             reader = csv.DictReader(f)
             count = 0
             for row in reader:
-                url = (row.get('url') or '').lower()
+                url = (row.get('url') or '').lower().rstrip('/')
                 if url:
                     self.con.execute(
                         "INSERT INTO excluded_urls VALUES (?, ?, ?) ON CONFLICT (url) DO UPDATE SET reason=excluded.reason, excluded_at=excluded.excluded_at",
@@ -83,7 +83,7 @@ class ArticleDB:
 
     def add_exclusion(self, url, reason='', excluded_at=None):
         """Insert or replace a single exclusion."""
-        url_lower = url.lower() if url else url
+        url_lower = url.lower().rstrip('/') if url else url
         ts = excluded_at or datetime.now().strftime('%Y-%m-%dT%H:%M')
         self.con.execute(
             "INSERT INTO excluded_urls VALUES (?, ?, ?) ON CONFLICT (url) DO UPDATE SET reason=excluded.reason, excluded_at=excluded.excluded_at",
@@ -92,11 +92,11 @@ class ArticleDB:
 
     def remove_exclusion(self, url):
         """Remove a URL from the exclusion table."""
-        self.con.execute("DELETE FROM excluded_urls WHERE url = ?", [(url.lower() if url else url)])
+        self.con.execute("DELETE FROM excluded_urls WHERE url = ?", [(url.lower().rstrip('/') if url else url)])
 
     def is_excluded(self, url):
         """Return True if the URL is in the exclusion table."""
-        url_lower = url.lower() if url else url
+        url_lower = url.lower().rstrip('/') if url else url
         row = self.con.execute("SELECT 1 FROM excluded_urls WHERE url = ?", [url_lower]).fetchone()
         return row is not None
 
