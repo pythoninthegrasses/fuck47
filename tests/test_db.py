@@ -339,7 +339,9 @@ class TestArticleDB:
         next time main.py runs clear_old_articles() — before the pin can be re-applied.
         """
         old_ts = '2026-07-01 10:00'  # unambiguously old relative to any reasonable hours value
-        temp_db.insert_article({'url': 'https://example.com/old-pinned', 'title': 'Old Pinned', 'published_at': old_ts, 'manual_review': True})
+        temp_db.insert_article(
+            {'url': 'https://example.com/old-pinned', 'title': 'Old Pinned', 'published_at': old_ts, 'manual_review': True}
+        )
         temp_db.insert_article({'url': 'https://example.com/old-regular', 'title': 'Old Regular', 'published_at': old_ts})
 
         removed = temp_db.clear_old_articles(hours=1)
