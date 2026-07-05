@@ -70,7 +70,7 @@
     position: absolute;
     top: 0;
     right: 0;
-    width: 55vw;
+    width: 50vw;
     height: 100dvh;
     z-index: var(--z-portrait);
   }
@@ -83,7 +83,7 @@
   .plate-tan {
     top: 0;
     right: 10px;
-    width: 55vw;
+    width: 50vw;
     height: calc(100dvh - 12px);
     transform: translate(-12px, 12px);
     background: var(--tan);
@@ -231,8 +231,8 @@
   /* PREV sits at the image's left edge, NEXT at its right */
   .controls {
     position: absolute;
-    left: calc(45vw + clamp(16px, 2vw, 32px));
-    right: clamp(16px, 3vw, 48px);
+    left: calc(50vw + clamp(16px, 2vw, 32px));
+    right: clamp(16px, 2vw, 32px);
     bottom: clamp(16px, 3vh, 32px);
     z-index: var(--z-controls);
     display: flex;
@@ -391,10 +391,10 @@
 
     .headline-block,
     .story {
-      align-self: start;
+      align-self: center;
     }
     .headline-block {
-      width: 100%;
+      width: calc(var(--story-width) + 10vw); /* 5vw fan on each side */
       max-width: min(46vw, 66ch);
     }
     /* narrow the story so it always clears the portrait's tan plate */
@@ -436,11 +436,11 @@
       display: none;
     }
 
-    h1.headline { font-size: clamp(2.925rem, 6.5vw + 0.65rem, 6.825rem); }
-    .headline-block[data-len="long"] h1.headline { font-size: clamp(2.275rem, 4.42vw + 0.52rem, 4.55rem); }
-    .headline-block[data-len="xlong"] h1.headline { font-size: clamp(1.82rem, 3.38vw + 0.39rem, 3.4125rem); }
+    h1.headline { font-size: clamp(3.51rem, 7.8vw + 0.78rem, 8.19rem); }
+    .headline-block[data-len="long"] h1.headline { font-size: clamp(2.73rem, 5.304vw + 0.624rem, 5.46rem); }
+    .headline-block[data-len="xlong"] h1.headline { font-size: clamp(2.184rem, 4.056vw + 0.468rem, 4.095rem); }
 
-    .story .desc { font-size: 1.3rem; }
+    .story .desc { font-size: 1.56rem; }
   }
   </style>
 </head>
@@ -731,8 +731,8 @@
           return contentHeight - fixedHeight;
         };
 
-        const MIN_PX = 47; // reference: postal-service headline fits ~47.4px
-        const MAX_PX = 110;
+        const MIN_PX = 56.4; // reference: postal-service headline fits ~56.9px (47 × 1.2)
+        const MAX_PX = 132;
         const fit = (space) => {
           if (space <= 0) return MIN_PX;
           headline.style.fontSize = MAX_PX + 'px';
@@ -760,7 +760,7 @@
         // description at progressively smaller sizes — each one frees up
         // more vertical space for the headline — until the fitted headline
         // is comfortably larger than the description, or we hit the floor.
-        const DESC_SIZES_PX = [20.8, 18, 16, 14.5]; // 1.3rem, 1.125rem, 1rem, 0.9rem
+        const DESC_SIZES_PX = [24.96, 21.6, 19.2, 17.4]; // 1.56rem, 1.35rem, 1.2rem, 1.0875rem
         const RATIO = 1.2;
         let fittedPx = MIN_PX;
         for (let i = 0; i < DESC_SIZES_PX.length; i++) {
