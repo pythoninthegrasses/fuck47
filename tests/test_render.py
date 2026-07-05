@@ -202,6 +202,26 @@ class TestRenderIndex:
         assert count == 0
         assert index_path.read_text() == TEMPLATE
 
+    def test_empty_db_leaves_file_unchanged(self, tmp_path):
+        """An empty-but-present DB must not overwrite a populated index (mirrors missing-DB posture)."""
+        db_path = tmp_path / 'filtered_articles.duckdb'
+        index_path = tmp_path / 'index.html'
+        # Write index with a populated article block so we can detect an unwanted overwrite.
+        populated = TEMPLATE.replace(
+            '<script type="application/json" id="poster-articles">[]</script>',
+            '<script type="application/json" id="poster-articles">'
+            '[{"url":"https://example.com/a","title":"Existing Article","description":"Desc",'
+            '"source":"News","published_at":"2026-07-01 10:00","slug":"existing-article"}]'
+            '</script>',
+        )
+        index_path.write_text(populated)
+        _seed_db(db_path, [])  # DB exists but contains no articles
+
+        count = render_index(str(db_path), str(index_path))
+
+        assert count == 0
+        assert index_path.read_text() == populated
+
     def test_orders_most_recent_first_and_limits(self, tmp_path):
         db_path = tmp_path / 'filtered_articles.duckdb'
         index_path = tmp_path / 'index.html'

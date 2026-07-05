@@ -132,15 +132,17 @@ def render_index(db_path='filtered_articles.duckdb', index_path='app/index.html'
 
     Replaces the block between the ARTICLES:BEGIN/END markers in index_path with a
     JSON payload (consumed by Alpine to rotate posters) and a noscript link list.
-    If the filtered store is missing, the page is left untouched so the site keeps
-    serving the previous run's output (same failure posture as main.py's sentiment
-    fallback). Returns the number of articles injected.
+    If the filtered store is missing or empty, the page is left untouched so the
+    site keeps serving the previous run's output (same failure posture as main.py's
+    sentiment fallback). Returns the number of articles injected.
     """
     index_file = Path(index_path)
     if not Path(db_path).exists():
         return 0
 
     articles = _filtered_articles(db_path, limit)
+    if not articles:
+        return 0
     _assign_unique_slugs(articles)
 
     # `</` escaped so untrusted titles cannot close the script tag from inside the JSON.
