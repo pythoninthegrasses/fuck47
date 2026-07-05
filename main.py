@@ -78,12 +78,13 @@ def main():
             pinned_articles = [a for a in all_articles if a.get('manual_review') and a['url'] not in pinned_urls]
             to_store = negative_articles + pinned_articles
 
-            # Create filtered articles database
-            filtered_db = create_article_db('filtered_articles.duckdb')
-            filtered_db.clear_all_articles()
-            filtered_db.insert_articles(to_store)
-            filtered_db.sort_and_reindex_articles()
-            filtered_db.archive_snapshot(ARCHIVE_DIR, run_at)
+            # Create filtered articles database; use context manager so the connection is
+            # closed before render_index() opens the same file as read_only.
+            with create_article_db('filtered_articles.duckdb') as filtered_db:
+                filtered_db.clear_all_articles()
+                filtered_db.insert_articles(to_store)
+                filtered_db.sort_and_reindex_articles()
+                filtered_db.archive_snapshot(ARCHIVE_DIR, run_at)
             print(f"Stored {len(to_store)} articles in filtered articles store ({len(pinned_articles)} pinned)")
 
     # Sort and reindex articles by published_at (desc) then source (asc)

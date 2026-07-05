@@ -6,7 +6,7 @@ import sys
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -162,8 +162,11 @@ class TestMainE2E:
             patch('main.DJT_FILTER_ENABLED', True),
             patch('main.DJT_FILTER_MIN_SCORE', 1.0),
         ):
-            # Set up mocks
-            mock_filtered_db = Mock()
+            # MagicMock supports the context manager protocol; configure __enter__ to return
+            # the mock itself so assertions on it still work after the with-block in main().
+            mock_filtered_db = MagicMock()
+            mock_filtered_db.__enter__ = Mock(return_value=mock_filtered_db)
+            mock_filtered_db.__exit__ = Mock(return_value=False)
             mock_create_db.return_value = mock_filtered_db  # For the filtered articles store
             mock_newsapi.return_value = []
             mock_rss.return_value = []
@@ -437,8 +440,9 @@ class TestMainSentimentGate:
         ):
             main()
 
-        stored = filtered_db.get_all_articles()
-        stored_titles = {a['title'] for a in stored}
+        # main() closes filtered_db via context manager; reopen by path to read results.
+        with ArticleDB(filtered_path) as fresh_db:
+            stored_titles = {a['title'] for a in fresh_db.get_all_articles()}
         assert stored_titles == {'Trump Negative Article', 'Trump Boundary Article'}
 
     @patch('main.score_articles')
@@ -472,7 +476,9 @@ class TestMainSentimentGate:
         ):
             main()
 
-        stored_titles = {a['title'] for a in filtered_db.get_all_articles()}
+        # main() closes filtered_db via context manager; reopen by path to read results.
+        with ArticleDB(filtered_path) as fresh_db:
+            stored_titles = {a['title'] for a in fresh_db.get_all_articles()}
         assert 'Manually Reviewed Article' in stored_titles
         assert 'Algorithmic Positive Article' not in stored_titles
 
@@ -644,8 +650,10 @@ def test_main_e2e_integration():
             patch('main.DJT_FILTER_ENABLED', True),
             patch('main.DJT_FILTER_MIN_SCORE', 1.0),
         ):
-            # Set up mocks
-            mock_filtered_db = Mock()
+            # Set up mocks; MagicMock supports the context manager protocol.
+            mock_filtered_db = MagicMock()
+            mock_filtered_db.__enter__ = Mock(return_value=mock_filtered_db)
+            mock_filtered_db.__exit__ = Mock(return_value=False)
             mock_create_db.return_value = mock_filtered_db
 
             # Mock API responses
