@@ -5,7 +5,7 @@ CLI for the article store: CRUD, feed fetching, and LLM sentiment judging.
 
 Examples:
     uv run ./cli.py --add https://www.axios.com/2023/03/27/labor-board-says-non-disparagement-clauses-are-unlawful
-    uv run ./cli.py -A URL1 URL2 --file urls.csv
+    uv run ./cli.py -a URL1 URL2 --file urls.csv
     uv run ./cli.py --remove "labor board non-disparagement"
     uv run ./cli.py -r https://fuckfortyseven.org/#labor-board-says-non-disparagement-clauses-are-unlawful
     uv run ./cli.py --articles --hours 8 --djt-only
@@ -626,11 +626,11 @@ def build_parser():
     cmd = parser.add_mutually_exclusive_group(required=True)
     cmd.add_argument('--health', action='store_true', help="smoke-test a judge target")
     cmd.add_argument('-f', '--fetch', action='store_true', help="fetch NewsAPI + RSS articles into the store")
-    cmd.add_argument('-a', '--articles', action='store_true', help="list articles currently in the store")
+    cmd.add_argument('-A', '--articles', action='store_true', help="list articles currently in the store")
     cmd.add_argument('-j', '--judge', action='store_true', help="score current DJT articles against one target")
     cmd.add_argument('-c', '--compare', action='store_true', help="score current DJT articles against both targets side by side")
     cmd.add_argument(
-        '-A', '--add', nargs='*', metavar='URL', help="batch-add articles by URL; un-excludes previously blocked URLs"
+        '-a', '--add', nargs='*', metavar='URL', help="batch-add articles by URL; un-excludes previously blocked URLs"
     )
     cmd.add_argument(
         '-r',
