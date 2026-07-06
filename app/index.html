@@ -260,19 +260,21 @@
 
   .backissues {
     margin-top: calc(12px + 15vh);
-    font-size: 0.8125rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
   }
   .backissues a {
-    color: var(--ink);
-    text-decoration: underline;
-    text-decoration-thickness: 2px;
-    text-underline-offset: 3px;
-    display: inline-block;
-    padding: 12px 0;
+    font-family: var(--masthead);
+    font-size: clamp(1.125rem, 4.5vw, 1.75rem);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    background: var(--ink);
+    color: var(--ground);
+    padding: 10px 22px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
   }
-  .backissues a:hover { background: var(--tan); }
+  .backissues a:hover { background: var(--olive); }
 
   .credit {
     position: absolute;
@@ -454,22 +456,10 @@
       left: clamp(16px, 3vw, 48px);
       bottom: clamp(16px, 3vh, 32px);
       margin-top: 0;
-      font-size: unset;
     }
     .backissues a {
-      font-family: var(--masthead);
       font-size: clamp(1.25rem, 2vw, 1.75rem);
-      text-transform: uppercase;
-      letter-spacing: 0.02em;
-      background: var(--ink);
-      color: var(--ground);
-      padding: 10px 22px;
-      min-height: 44px;
-      display: inline-flex;
-      align-items: center;
-      text-decoration: none;
     }
-    .backissues a:hover { background: var(--olive); }
   }
   </style>
 </head>
@@ -645,7 +635,7 @@
         </div>
       </template>
 
-      <p class="backissues" x-ref="backissues"><a href="archive/">Back issues &rarr;</a></p>
+      <p class="backissues" x-ref="backissues"><a href="archive/">Back issues</a></p>
     </div>
 
     <div class="controls" x-show="articles.length > 1">
