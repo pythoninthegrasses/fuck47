@@ -136,6 +136,8 @@
   }
   .type-col a, .type-col button { pointer-events: auto; }
 
+  .content-group { display: contents; }
+
   .masthead .site {
     font-family: var(--masthead);
     font-size: clamp(1.25rem, 2.5vw, 1.75rem);
@@ -389,13 +391,17 @@
       padding-right: clamp(16px, 3vw, 48px);
     }
 
-    .headline-block,
-    .story {
-      align-self: center;
+    .content-group {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: auto;
+      margin-bottom: auto;
     }
     .headline-block {
       width: calc(var(--story-width) + 10vw); /* 5vw fan on each side */
       max-width: min(46vw, 66ch);
+      margin-top: 0;
       margin-bottom: 0;
     }
     /* narrow the story so it always clears the portrait's tan plate */
@@ -613,7 +619,7 @@
       </header>
 
       <template x-if="current">
-        <div style="display: contents">
+        <div class="content-group">
           <div class="headline-block" aria-live="polite" :data-len="lenClass" x-ref="headlineBlock">
             <h1 class="headline" x-ref="headline"><span x-text="current.title"></span></h1>
           </div>
@@ -629,7 +635,7 @@
       </template>
 
       <template x-if="!current">
-        <div style="display: contents">
+        <div class="content-group">
           <div class="headline-block" x-ref="headlineBlock">
             <h1 class="headline" x-ref="headline"><span>No bad news yet</span></h1>
           </div>
@@ -733,25 +739,23 @@
         const typeCol = this.$refs.typeCol;
         const masthead = this.$refs.masthead;
         const story = this.$refs.story;
-        const backissues = this.$refs.backissues;
-        if (!typeCol || !masthead || !story || !backissues) return;
+        if (!typeCol || !masthead || !story) return;
 
-        // .headline-block centers via margin-top/bottom: auto inside the flex
-        // column, so it isn't flush against the masthead — its real height
-        // budget is the column's content box minus what the other (fixed-size)
-        // children actually occupy, not the masthead-to-story gap.
         const outerHeight = (el) => {
           const cs = getComputedStyle(el);
           return el.getBoundingClientRect().height
             + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
         };
+        // Reserve CENTERING_PX for the auto-margin above/below .content-group
+        // (40px top + 40px bottom). The backissues button is position:absolute
+        // and doesn't participate in flex layout, so it isn't measured here.
+        const CENTERING_PX = 80;
         const available = () => {
           const typeColRect = typeCol.getBoundingClientRect();
           const typeColCS = getComputedStyle(typeCol);
           const contentHeight = typeColRect.height
             - parseFloat(typeColCS.paddingTop) - parseFloat(typeColCS.paddingBottom);
-          const fixedHeight = outerHeight(masthead) + outerHeight(story) + outerHeight(backissues);
-          return contentHeight - fixedHeight;
+          return contentHeight - outerHeight(masthead) - outerHeight(story) - CENTERING_PX;
         };
 
         const MIN_PX = 56.4; // reference: postal-service headline fits ~56.9px (47 × 1.2)
