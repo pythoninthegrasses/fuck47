@@ -68,10 +68,12 @@
     margin-bottom: 2rem;
   }
 
-  /* Rule 1: narrow line under subtitle, same width as Rule 2 */
+  /* Rule 1: narrow line under subtitle, same width as Rule 2.
+     font-size: 1rem ensures ch resolves at body scale, not subtitle's 0.8rem. */
   .subtitle::after {
     content: '';
     display: block;
+    font-size: 1rem;
     width: var(--rule-w);
     height: 2px;
     background: var(--ink);
