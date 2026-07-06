@@ -124,6 +124,12 @@
     padding: 0.35em 0;
     border-bottom: 1px solid var(--tan);
     break-inside: avoid;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    /* 2 lines (2 × 1.6em line-height) + vertical padding */
+    min-height: calc(3.2em + 0.7em);
   }
 
   #archive-content a { color: var(--olive); }
