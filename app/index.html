@@ -397,12 +397,13 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin-top: auto;
+      align-self: stretch;
+      margin-top: clamp(24px, 4.5vh, 80px);
       margin-bottom: auto;
     }
     .headline-block {
       width: calc(var(--story-width) + 10vw); /* 5vw fan on each side */
-      max-width: min(46vw, 66ch);
+      max-width: min(46vw, 66ch, 100%);
       margin-top: 0;
       margin-bottom: 0;
     }
@@ -737,21 +738,27 @@
         const story = this.$refs.story;
         if (!typeCol || !masthead || !story) return;
 
+        const contentGroup = block ? block.parentElement : null;
+        if (!contentGroup) return;
+
         const outerHeight = (el) => {
           const cs = getComputedStyle(el);
           return el.getBoundingClientRect().height
             + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
         };
-        // Reserve CENTERING_PX for the auto-margin above/below .content-group
-        // (40px top + 40px bottom). The backissues button is position:absolute
-        // and doesn't participate in flex layout, so it isn't measured here.
-        const CENTERING_PX = 80;
+        // Read the actual (non-auto) top margin on the content-group; the
+        // content-group is anchored below the masthead by a viewport-height
+        // clamp so the gap stays constant instead of ballooning on tall
+        // (portrait-ish) viewports. The bottom margin is auto and absorbs
+        // remaining space, so nothing needs to be reserved for it.
+        const contentGroupTopMargin = () =>
+          parseFloat(getComputedStyle(contentGroup).marginTop) || 0;
         const available = () => {
           const typeColRect = typeCol.getBoundingClientRect();
           const typeColCS = getComputedStyle(typeCol);
           const contentHeight = typeColRect.height
             - parseFloat(typeColCS.paddingTop) - parseFloat(typeColCS.paddingBottom);
-          return contentHeight - outerHeight(masthead) - outerHeight(story) - CENTERING_PX;
+          return contentHeight - outerHeight(masthead) - outerHeight(story) - contentGroupTopMargin();
         };
 
         const MIN_PX = 56.4; // reference: postal-service headline fits ~56.9px (47 × 1.2)
