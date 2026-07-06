@@ -164,7 +164,7 @@
     line-height: 1.28;
     text-transform: uppercase;
     letter-spacing: 0.005em;
-    text-wrap: wrap;
+    text-wrap: balance;
     color: #fff;
   }
   /* size steps down as the wire headline gets longer; set via data-len from Alpine */
@@ -773,8 +773,32 @@
           return lo;
         };
 
+        // Reduce font until the wrap line count is proportional to title length.
+        // Prevents short titles from stacking into many narrow lines.
+        // Subtract block padding before computing line count so the 4vh top/bottom
+        // padding doesn't inflate the estimate at small font sizes.
+        const blockPad = () => {
+          const cs = getComputedStyle(block);
+          return parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        };
+        const countLines = (fontPx) =>
+          Math.round((block.getBoundingClientRect().height - blockPad()) / (fontPx * 1.28));
+        const reduceToLineTarget = (currentPx) => {
+          const titleLen = (headline.textContent || '').trim().length;
+          const maxLines = Math.max(2, Math.floor(titleLen / 16));
+          if (countLines(currentPx) <= maxLines) return currentPx;
+          let lo = MIN_PX, hi = currentPx;
+          while (hi - lo > 0.5) {
+            const mid = (lo + hi) / 2;
+            headline.style.fontSize = mid + 'px';
+            if (countLines(mid) <= maxLines) lo = mid; else hi = mid;
+          }
+          headline.style.fontSize = lo + 'px';
+          return lo;
+        };
+
         if (!desc) {
-          fit(available());
+          reduceToLineTarget(fit(available()));
           return;
         }
 
@@ -790,6 +814,7 @@
           fittedPx = fit(available());
           if (fittedPx >= DESC_SIZES_PX[i] * RATIO || i === DESC_SIZES_PX.length - 1) break;
         }
+        reduceToLineTarget(fittedPx);
       },
 
       slugFromHash() {
