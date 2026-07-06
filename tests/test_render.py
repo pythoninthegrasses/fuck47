@@ -52,7 +52,9 @@ class TestRenderArchive:
         assert (output_dir / '2026-07-01.html').exists()
 
         index_html = (output_dir / 'index.html').read_text()
-        assert 'hx-get="archive/2026-07-01.html"' in index_html
+        assert 'hx-get="2026-07-01.html"' in index_html
+        assert 'archive/2026-07-01.html' not in index_html  # no doubled path
+        assert '<style>' in index_html  # page must have styling
 
         fragment_html = (output_dir / '2026-07-01.html').read_text()
         assert 'Trump Article A' in fragment_html

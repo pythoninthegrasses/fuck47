@@ -2,16 +2,177 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Article Archive</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fuck Forty Seven — Archive</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23221f1a'/%3E%3Ctext x='8' y='12.5' text-anchor='middle' font-family='Arial Narrow, sans-serif' font-weight='bold' font-size='11' fill='%23f4efe3'%3E47%3C/text%3E%3C/svg%3E">
+  <link rel="preload" href="../fonts/anton.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../fonts/special-elite.woff2" as="font" type="font/woff2" crossorigin>
+  <style>
+  @font-face {
+    font-family: 'Anton';
+    src: url('../fonts/anton.woff2') format('woff2');
+    font-weight: 400;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: 'Special Elite';
+    src: url('../fonts/special-elite.woff2') format('woff2');
+    font-weight: 400;
+    font-display: swap;
+  }
+
+  :root {
+    --ink: #221f1a;
+    --ground: #dfe2dd;
+    --stock: #f1e6c9;
+    --tan: #e8b98a;
+    --olive: #48566d;
+    --masthead: 'Anton', 'Arial Narrow', Impact, sans-serif;
+    --typewriter: 'Special Elite', 'Courier New', monospace;
+
+    /* Width cascade: date text → date separators (+5%) → both rules (+10%) */
+    --date-text-w: 11.2ch;
+    --sep-w: calc(var(--date-text-w) * 1.05);
+    --rule-w: calc(var(--sep-w) * 1.10);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--typewriter);
+    font-size: 1rem;
+    line-height: 1.6;
+    padding: clamp(1.5rem, 4vw, 3rem);
+  }
+
+  .masthead {
+    font-family: var(--masthead);
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    letter-spacing: -0.02em;
+    line-height: 1;
+    text-transform: uppercase;
+    margin-bottom: 0.25em;
+  }
+
+  .masthead a { color: var(--ink); text-decoration: none; }
+  .masthead a:hover { color: var(--olive); }
+
+  .subtitle {
+    font-family: var(--typewriter);
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--olive);
+    margin-bottom: 2rem;
+  }
+
+  /* Rule 1: narrow line under subtitle, same width as Rule 2 */
+  .subtitle::after {
+    content: '';
+    display: block;
+    width: var(--rule-w);
+    height: 2px;
+    background: var(--ink);
+    margin-top: 0.75rem;
+  }
+
+  .layout { display: block; }
+
+  .date-list {
+    list-style: none;
+    width: var(--sep-w);
+  }
+
+  .date-list li { border-bottom: 1px solid var(--tan); }
+
+  .date-list a {
+    display: block;
+    padding: 0.4em 0;
+    color: var(--ink);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .date-list a::before { content: '› '; color: var(--olive); }
+  .date-list a:hover { color: var(--olive); }
+
+  /* Rule 2: narrow line below date nav, same width as Rule 1 */
+  .date-nav::after {
+    content: '';
+    display: block;
+    width: var(--rule-w);
+    height: 2px;
+    background: var(--ink);
+    margin-top: 1rem;
+  }
+
+  #archive-content { margin-top: 2rem; }
+
+  #archive-content h2 {
+    font-family: var(--masthead);
+    font-size: 1.4rem;
+    margin-bottom: 0.75rem;
+  }
+
+  #archive-content ul { list-style: none; }
+
+  #archive-content li {
+    padding: 0.35em 0;
+    border-bottom: 1px solid var(--tan);
+    break-inside: avoid;
+  }
+
+  #archive-content a { color: var(--olive); }
+  #archive-content a:hover { color: var(--ink); }
+
+  /* Desktop: sidebar + content columns */
+  @media (min-width: 768px) {
+    .layout {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: 3rem;
+      align-items: start;
+    }
+
+    #archive-content {
+      margin-top: 0;
+      padding-left: 2rem;
+      border-left: 2px solid var(--ink);
+    }
+  }
+
+  /* 2 article columns at half QHD width */
+  @media (min-width: 1280px) {
+    #archive-content ul {
+      column-count: 2;
+      column-gap: 2rem;
+      column-rule: 1px solid var(--tan);
+    }
+  }
+
+  /* 3 article columns at QHD */
+  @media (min-width: 2560px) {
+    #archive-content ul {
+      column-count: 3;
+    }
+  }
+  </style>
   <script src="https://unpkg.com/htmx.org@2"></script>
 </head>
 <body>
-  <h1>Article Archive</h1>
-  <ul>
-  <li><a href="archive/2026-07-06.html" hx-get="archive/2026-07-06.html" hx-target="#archive-content" hx-swap="innerHTML">2026-07-06</a></li>
-  <li><a href="archive/2026-07-05.html" hx-get="archive/2026-07-05.html" hx-target="#archive-content" hx-swap="innerHTML">2026-07-05</a></li>
-  <li><a href="archive/2026-07-03.html" hx-get="archive/2026-07-03.html" hx-target="#archive-content" hx-swap="innerHTML">2026-07-03</a></li>
-</ul>
-  <div id="archive-content"></div>
+  <h1 class="masthead"><a href="../index.html">Fuck 47</a></h1>
+  <p class="subtitle">Archive</p>
+  <div class="layout">
+    <nav class="date-nav">
+      <ul class="date-list">
+      <li><a href="2026-07-06.html" hx-get="2026-07-06.html" hx-target="#archive-content" hx-swap="innerHTML">2026-07-06</a></li>
+      <li><a href="2026-07-05.html" hx-get="2026-07-05.html" hx-target="#archive-content" hx-swap="innerHTML">2026-07-05</a></li>
+      <li><a href="2026-07-03.html" hx-get="2026-07-03.html" hx-target="#archive-content" hx-swap="innerHTML">2026-07-03</a></li>
+      </ul>
+    </nav>
+    <main id="archive-content"></main>
+  </div>
 </body>
 </html>

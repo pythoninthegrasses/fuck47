@@ -77,7 +77,7 @@ Serve the site with:
 python -m http.server 8000 --directory app
 ```
 
-The `chrome-devtools-axi` skill is installed as a project skill (`npx -y chrome-devtools-axi <command>`). Use it to navigate, take screenshots, run JS, and inspect console/network. Key patterns:
+Use `chrome-devtools-axi` for all browser automation — **do not use `claude-in-chrome` or `playwright`** unless explicitly asked. It is installed as a project skill (`npx -y chrome-devtools-axi <command>`). Key patterns:
 
 ```bash
 npx -y chrome-devtools-axi open http://localhost:8000   # navigate + snapshot
