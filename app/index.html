@@ -396,6 +396,7 @@
     .headline-block {
       width: calc(var(--story-width) + 10vw); /* 5vw fan on each side */
       max-width: min(46vw, 66ch);
+      margin-bottom: 0;
     }
     /* narrow the story so it always clears the portrait's tan plate */
     .story {
@@ -403,7 +404,7 @@
       z-index: 0;
       width: var(--story-width);
       background: transparent;
-      margin-top: clamp(24px, 4vh, 48px);
+      margin-top: clamp(8px, 2vh, 24px);
     }
     .story::before {
       content: "";
